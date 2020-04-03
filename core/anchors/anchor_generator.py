@@ -53,8 +53,6 @@ class AnchorGenerator(object):
             anchors = tf.concat([anchors, anchors2, anchors3, anchors4], axis=0)
 
         anchors = tf.reshape(anchors, [input_h * input_w * num_anchors, 4])
-        anchors /= tf.convert_to_tensor([input_h * strides, input_w * strides, 
-                                         input_h * strides, input_w * strides], tf.float32)
-
+       
         return anchors
 

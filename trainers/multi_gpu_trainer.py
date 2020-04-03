@@ -165,14 +165,14 @@ class MultiGPUTrainer(object):
                                 self.training_loss_metrics[key] = tf.keras.metrics.Mean()
                         
                         if key == "l2_loss":
-                            self.training_loss_metrics[key].update_state(value / self.num_replicas)
+                            self.training_loss_metrics[key].update_state(value / self.num_replicas) 
                         else:
                             self.training_loss_metrics[key].update_state(value)
 
                     if self.global_step.value() % self.log_every_n_steps == 0:
                         # tf.print(self.optimizer.loss_scale._current_loss_scale, self.optimizer.loss_scale._num_good_steps)
                         matched_boxes, nmsed_boxes, _ = self.detector.summary_boxes(outputs, batch_labels)
-                        batch_gt_boxes = batch_labels["gt_boxes"] 
+                        batch_gt_boxes = batch_labels["gt_boxes"] * (1. / batch_labels["input_size"]) 
                         batch_images = tf.image.draw_bounding_boxes(images=batch_images,
                                                                     boxes=batch_gt_boxes,
                                                                     colors=tf.constant([[0., 0., 255.]]))
@@ -213,7 +213,7 @@ class MultiGPUTrainer(object):
                             self.val_loss_metrics[key].update_state(value)
         
                     matched_boxes, nmsed_boxes, nmsed_scores = self.detector.summary_boxes(outputs, batch_labels)
-                    batch_gt_boxes = batch_labels["gt_boxes"]
+                    batch_gt_boxes = batch_labels["gt_boxes"] * (1. / batch_labels["input_size"]) 
                     if self.val_steps.value() % self.log_every_n_steps == 0:
                         batch_images = tf.image.draw_bounding_boxes(images=batch_images,
                                                                     boxes=batch_gt_boxes,
@@ -338,4 +338,3 @@ class MultiGPUTrainer(object):
 
         self.manager.save(self.global_step)
         self.summary_writer.close()
-

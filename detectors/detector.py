@@ -84,6 +84,9 @@ class Detector(metaclass=ABCMeta):
         
         predicted_boxes = self.delta2box(total_anchors, predicted_boxes)
         matched_gt_boxes = self._get_matched_gt_boxes(target_boxes, target_labels >= 1)
+        input_size = image_info["input_size"]
+        predicted_boxes *= (1. / input_size)
+        matched_gt_boxes *= (1. / input_size)
        
         if self.cfg.head.use_sigmoid:
             predicted_scores = tf.nn.sigmoid(predicted_labels)
