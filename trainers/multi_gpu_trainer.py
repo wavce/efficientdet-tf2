@@ -31,7 +31,7 @@ class MultiGPUTrainer(object):
         train_dataset = build_dataset(dataset=cfg.train.dataset.dataset,
                                       dataset_dir=cfg.train.dataset.dataset_dir,
                                       batch_size=self.train_batch_size,
-                                      trainning=cfg.train.dataset.training,
+                                      training=cfg.train.dataset.training,
                                       input_size=cfg.train.dataset.input_size,
                                       augmentation=cfg.train.dataset.augmentation,
                                       assigner=cfg.assigner.as_dict(),
@@ -39,7 +39,7 @@ class MultiGPUTrainer(object):
         val_dataset = build_dataset(dataset=cfg.val.dataset.dataset,
                                     dataset_dir=cfg.val.dataset.dataset_dir,
                                     batch_size=self.val_batch_size,
-                                    trainning=cfg.val.dataset.training,
+                                    training=cfg.val.dataset.training,
                                     input_size=cfg.val.dataset.input_size,
                                     augmentation=cfg.val.dataset.augmentation,
                                     assigner=cfg.assigner.as_dict(),
@@ -108,8 +108,8 @@ class MultiGPUTrainer(object):
                                              dtype=tf.float32)
             self.checkpoint = tf.train.Checkpoint(optimizer=self.optimizer, detector=self.detector.model)
             self.manager = tf.train.CheckpointManager(checkpoint=self.checkpoint,
-                                                    directory=cfg.train.checkpoint_dir,
-                                                    max_to_keep=10)
+                                                      directory=cfg.train.checkpoint_dir,
+                                                      max_to_keep=10)
 
             latest_checkpoint = self.manager.latest_checkpoint
             if latest_checkpoint is not None:
@@ -321,16 +321,15 @@ class MultiGPUTrainer(object):
                         ap = self.ap_metric.result()
                         self.ap_metric.reset_states()
                         tf.summary.scalar("val/ap", ap, self.global_step)
-
                         template.extend(["ap =", ap, "(%.2fs)." % (val_end - val_start)])
-                    
                     tf.print(*template)
 
                     if ap > max_ap:
                         self.manager.save(self.global_step)
                         tf.print(_time_to_string(), "Saving detector to %s." % self.manager.latest_checkpoint)
                         max_ap = ap
-                
+                        start = time.time()
+                        count = 0
                 else:
                     if tf.equal(self.global_step % self.save_ckpt_steps, 0):
                         self.manager.save(self.global_step)
@@ -338,3 +337,4 @@ class MultiGPUTrainer(object):
 
         self.manager.save(self.global_step)
         self.summary_writer.close()
+
