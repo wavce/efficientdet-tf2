@@ -85,8 +85,10 @@ CFG = params_dict.ParamsDict(default_params={
         "dropblock": None,
         "normalization": {
             "normalization": "batch_norm",
-            "momentum": 0.997,
-            "epsilon": 1e-4,
+            "momentum": 0.99,
+            "epsilon": 1e-3,
+            "center": True,
+            "scale": True,
             "axis": -1,
             "trainable": False
         },
@@ -108,8 +110,10 @@ CFG = params_dict.ParamsDict(default_params={
         # "activation": None,
         "normalization": {
             "normalization": "batch_norm",
-            "momentum": 0.997,
-            "epsilon": 1e-4,
+            "momentum": 0.99,
+            "epsilon": 1e-3,
+            "center": True,
+            "scale": True,
             "axis": -1,
             "trainable": True
         },
@@ -131,8 +135,10 @@ CFG = params_dict.ParamsDict(default_params={
         # "activation": None,
         "normalization": {
             "normalization": "batch_norm",
-            "momentum": 0.997,
-            "epsilon": 1e-4,
+            "momentum": 0.99,
+            "epsilon": 1e-3,
+            "center": True,
+            "scale": True,
             "axis": -1,
             "trainable": True
         },
@@ -271,7 +277,7 @@ CFG = params_dict.ParamsDict(default_params={
         "pre_nms_size": 100,   # select top_k high confident detections for nms 
         "post_nms_size": 50,
         "iou_threshold": 0.5,
-        "score_threshold": 0.5,
+        "score_threshold": 0.2,
         "use_sigmoid": True,
     }},
     restrictions=[

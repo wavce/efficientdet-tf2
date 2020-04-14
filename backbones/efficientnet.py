@@ -1,6 +1,7 @@
 import os
 import math
 import tensorflow as tf
+from core.layers import Swish
 from collections import namedtuple
 from backbones.backbone import Backbone
 from core.layers import build_normalization
@@ -114,7 +115,7 @@ def mbconv_block(inputs,
                                    kernel_initializer=conv2d_kernel_initializer)(inputs)
         x = build_normalization(**normalization,
                                 name=name+"/batch_normalization")(x)
-        x = tf.keras.layers.Activation("swish", name=name+"/swish")(x)
+        x = Swish(name=name+"/swish")(x)
     else:
         x = inputs
 
@@ -130,7 +131,7 @@ def mbconv_block(inputs,
     x = build_normalization(**normalization,
                             name=name+"/batch_normalization"
                             if expand_ratio == 1 else name+"/batch_normalization_1")(x)
-    x = tf.keras.layers.Activation("swish", name=name+"/swish" if expand_ratio == 1 else name+"/swish_1")(x)
+    x = Swish(name=name+"/swish" if expand_ratio == 1 else name+"/swish_1")(x)
 
     has_se = block_args.se_ratio is not None and 0 < block_args.se_ratio < 1
     if has_se:
@@ -146,7 +147,7 @@ def mbconv_block(inputs,
                                     kernel_initializer=conv2d_kernel_initializer,
                                     kernel_regularizer=l2_regularizer,
                                     name=name + "/se/conv2d")(se)
-        se = tf.keras.layers.Activation("swish", name=name + "/se/swish_1")(se)
+        se = Swish(name=name + "/se/swish_1")(se)
         se = tf.keras.layers.Conv2D(filters=filters,
                                     kernel_size=(1, 1),
                                     strides=(1, 1),
@@ -173,7 +174,7 @@ def mbconv_block(inputs,
                             if expand_ratio > 1 else name+"/batch_normalization_1")(x)
     if block_args.id_skip:
         if all(s == 1 for s in block_args.strides) and block_args.in_filters == block_args.out_filters:
-            x = DropConnect(drop_connect_rate, name=name + "/drop_connect")(x)
+            # x = DropConnect(drop_connect_rate, name=name + "/drop_connect")(x)
             x = tf.keras.layers.Add(name=name + "/sum")([x, inputs])
 
     return x
@@ -303,7 +304,7 @@ class EfficientNet(Backbone):
                                    kernel_regularizer=self.l2_regularizer,
                                    name=self.name + "/stem/conv2d")(x)
         x = build_normalization(**self.normalization, name=self.name + "/stem/batch_normalization")(x)
-        x = tf.keras.layers.Activation("swish", name=self.name + "/stem/swish")(x)
+        x = Swish(name=self.name + "/stem/swish")(x)
 
         block_outputs = []
         for idx, b_args in enumerate(self.blocks):
@@ -340,7 +341,7 @@ class EfficientNet(Backbone):
                                        kernel_regularizer=self.l2_regularizer,
                                        name=self.name + "/head/conv2d")(x)
             x = build_normalization(**self.normalization, name=self.name + "/head/batch_normalization")(x)
-            x = tf.keras.layers.Activation("swish", name=self.name + "/head/swish")(x)
+            x = Swish(name=self.name + "/head/swish")(x)
             x = tf.keras.layers.GlobalAveragePooling2D(data_format=self.data_format, 
                                                        name=self.name + "/head/global_avg_pooling")(x)
             x = tf.keras.layers.Dropout(self.global_params.dropout_rate, name=self.name + "/head/dropout")(x)
