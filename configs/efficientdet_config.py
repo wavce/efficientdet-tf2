@@ -15,6 +15,17 @@ def fpn_filters(phi, upper=6):
     return int(filters)
 
 
+def num_necks(phi):
+    if phi <= 4:
+        return int(phi + 3)
+    if phi == 5:
+        return 7
+    if phi == 6:
+        return 8
+    if phi == 7:
+        return 8
+
+
 def num_heads(phi, upper=6):
     if phi >= upper:
         phi = upper
@@ -22,21 +33,44 @@ def num_heads(phi, upper=6):
     return int(3 + math.floor(phi / 3))
 
 
-num_classes = 5
+def get_input_dim(phi):
+    if phi <= 4:
+        return int(512 + 128 * phi)
+    
+    if phi == 5 or phi == 6:
+        return 1280
+
+    if phi == 7:
+        return 1536 
+
+
+num_classes = 90
 
 min_level = 3
 max_level = 7
-phi = 0
-batch_size = 8
-
+phi = 5
+batch_size = 2
+# num_scales = 3
+# base_scale = 4
+# strides = [8, 16, 32, 64, 128]
+# anchor_scales = [[2 ** (i / num_scales) * s * base_scale
+#                   for i in range(num_scales)] for s in strides]
+num_scales = 3 # 3
 aspect_ratios = [1., 0.5, 2.]
-num_scales = 3
-base_scale = 4
+base_scale = 8  # 8
+step = 2 ** (1 / (num_scales - 1))
 strides = [8, 16, 32, 64, 128]
-anchor_scales = [[2 ** (i / num_scales) * s * base_scale
-                  for i in range(num_scales)] for s in strides]
+anchor_scales = [[base_scale * (step ** i) for i in range(0, num_scales)],
+                 [base_scale * (step ** i) for i in range(num_scales, num_scales * 2)],
+                 [base_scale * (step ** i) for i in range(num_scales * 2, num_scales * 3)],
+                 [base_scale * (step ** i) for i in range(num_scales * 3, num_scales * 4)],
+                 [base_scale * (step ** i) for i in range(num_scales * 4, num_scales * 5)]]
+anchor_scales = [[8.0, 12., 16.], [22., 32., 45.], [64., 90., 128.], [181., 256., 362.], [406., 448., 512.]]  # input=512
+# anchor_scales = [[8.0, 12., 16.], [22., 32., 45.], [64., 90., 128.], [181., 256., 362.], [406., 512., 640.]]  # input=640
+# anchor_scales = [[8.0, 12., 16.], [22., 32., 45.], [64., 90., 128.], [181., 256., 362.], [512., 640., 768.]]  # input=768
+# anchor_scales = [[8.0, 12., 16.], [22., 32., 45.], [64., 90., 128.], [181., 256., 362.], [512., 640., 986.]]  # input=896
 
-input_size = int(512 + phi * 128)
+input_size = get_input_dim(phi) 
 CFG = params_dict.ParamsDict(default_params={
     "detector": "efficientdet",
     "dtype": "float32",  # model dtype, if float16, means use mixed precision training.
@@ -65,7 +99,7 @@ CFG = params_dict.ParamsDict(default_params={
     },
     "neck": {
         "neck": "bifpn",
-        "repeats": int(phi + 3),
+        "repeats": num_necks(phi),
         "convolution": "separable_conv2d",
         "feat_dims": fpn_filters(phi),
         # "normalization":  {
@@ -77,7 +111,7 @@ CFG = params_dict.ParamsDict(default_params={
             "momentum": 0.997,
             "epsilon": 1e-4,
             "axis": -1,
-            "trainable": False
+            "trainable": True
         },
         "activation": {"activation": "swish"},
         "dropblock": None,
@@ -100,7 +134,7 @@ CFG = params_dict.ParamsDict(default_params={
             "momentum": 0.997,
             "epsilon": 1e-4,
             "axis": -1,
-            "trainable": False
+            "trainable": True
         },
         "activation": {"activation": "swish"},
         "dropblock": None,
@@ -124,8 +158,8 @@ CFG = params_dict.ParamsDict(default_params={
     },
     "assigner": {
         "assigner": "max_iou_assigner",
-        "pos_iou_thresh": 0.5,
-        "neg_iou_thresh": 0.5,
+        "pos_iou_thresh": 0.35,
+        "neg_iou_thresh": 0.35,
         "min_level": min_level,
         "max_level": max_level
     },
@@ -164,10 +198,10 @@ CFG = params_dict.ParamsDict(default_params={
         },
        "train": {
         "dataset": {
-            "dataset": "luzheng",
+            "dataset": "objects365",
             "batch_size": batch_size,
             "input_size": [input_size, input_size],
-            "dataset_dir": "/*/*/train",
+            "dataset_dir": "/home/bail/Data/data1/Dataset/Objects365/train",
             "training": True,
             "augmentation": [
                 dict(ssd_crop=dict(input_size=[input_size, input_size],
@@ -188,7 +222,7 @@ CFG = params_dict.ParamsDict(default_params={
         "samples": 12876,
         "num_classes": num_classes,  # 2 
 
-        "pretrained_weights_path": "/home/deepblue/Data/bail/pretrained_weights/efficientdet-d%d" % phi,
+        "pretrained_weights_path": "/home/bail/Workspace/pretrained_weights/efficientdet-d%d" % phi,
 
         "optimizer": {
             "optimizer": "sgd",
@@ -199,33 +233,33 @@ CFG = params_dict.ParamsDict(default_params={
             "loss_scale": None,  # The loss scale in mixed precision training. If None, use dynamic.
         },
 
-        "train_steps": 180000,
+        "train_steps": 240000,
         "learning_rate_scheduler": {
             # "learning_rate_scheduler": "piecewise_constant",
             # "initial_learning_rate": initial_learning_rate,
             # "boundaries": boundaries,
             # "values": values
             "learning_rate_scheduler": "cosine",
-            "initial_learning_rate": 0.0002
+            "initial_learning_rate": 0.002
         },
         "warmup": {
-            "warmup_learning_rate": 0.000001,
+            "warmup_learning_rate": 0.00001,
             "steps": 24000,
         },
         "checkpoint_dir": "checkpoints/efficientdet_d%d" % phi,
         "summary_dir": "logs/efficientdet_d%d" % phi,
 
-        "gradient_clip_norm": 10.0,
+        "gradient_clip_norm": .0,
 
-        "log_every_n_steps": 50,
-        "save_ckpt_steps": 4000,
+        "log_every_n_steps": 500,
+        "save_ckpt_steps": 10000,
     },
     "val": {
         "dataset": {
-            "dataset": "luzheng",
+            "dataset": "objects365",
             "batch_size": batch_size,
             "input_size": [input_size, input_size],
-            "dataset_dir": "?/val",
+            "dataset_dir": "/home/bail/Data/data1/Dataset/Objects365/train",
             "training": False,
             "augmentation": None,
         },
@@ -234,10 +268,10 @@ CFG = params_dict.ParamsDict(default_params={
         "val_every_n_steps": 15000,
     }, 
     "postprocess": {
-        "pre_nms_size": 2000,   # select top_k high confident detections for nms 
+        "pre_nms_size": 100,   # select top_k high confident detections for nms 
         "post_nms_size": 50,
         "iou_threshold": 0.5,
-        "score_threshold": 0.1,
+        "score_threshold": 0.5,
         "use_sigmoid": True,
     }},
     restrictions=[
@@ -255,4 +289,3 @@ if __name__ == "__main__":
     # print(CFG.as_dict())
     # print(CFG.train.learning_rate_scheduler.as_dict())
     print(anchor_scales)
-
