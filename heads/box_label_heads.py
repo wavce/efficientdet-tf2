@@ -15,11 +15,9 @@ def prediction_head(inputs,
         if normalization is not None:
             x = build_normalization(normalization=normalization.normalization,
                                     name=name+"-%d-bn-%d" % (i, level))(x)
-
         if activation is not None:
             x = build_activation(activation=activation.activation, 
                                  name=name+"-%d-%s-%d" % (i, activation.activation, level))(x)
-
     return x
 
     

@@ -4,6 +4,7 @@ from core.layers import build_convolution
 from core.layers import build_normalization
 from configs.params_dict import ParamsDict
 from core.layers import NearestUpsampling2D
+from tensorflow.python.keras.applications import imagenet_utils
 
 
 class WeightedFusion2(tf.keras.layers.Layer):
@@ -22,13 +23,14 @@ class WeightedFusion2(tf.keras.layers.Layer):
         
         super(WeightedFusion2, self).build(input_shape)
 
-    def call(self, inputs, training=None):
+    def call(self, inputs, training=None): 
         w1 = tf.nn.relu(self.w1)
         w2 = tf.nn.relu(self.w2)
-        divisor = tf.add_n([w1, w2]) + self.epsilon
-        outputs = (w1 * inputs[0] + w2 * inputs[1]) * (1. / divisor)
-
-        return outputs
+        weights = [w1, w2]
+       
+        weights_sum = tf.add_n(weights)
+        outputs = [inputs[i] * weights[i] / (weights_sum + 0.0001) for i in range(len(inputs))] 
+        return tf.add_n(outputs)
 
 
 class WeightedFusion3(tf.keras.layers.Layer):
@@ -53,9 +55,10 @@ class WeightedFusion3(tf.keras.layers.Layer):
         w1 = tf.nn.relu(self.w1)
         w2 = tf.nn.relu(self.w2)
         w3 = tf.nn.relu(self.w3)
-        divisor = tf.add_n([w1, w2, w3]) + self.epsilon
-        outputs = (w1 * inputs[0] + w2 * inputs[1] + w3 * inputs[2]) * (1. / divisor)
-        return outputs
+        weights = [w1, w2, w3]
+        weights_sum = tf.add_n(weights)
+        outputs = [inputs[i] * weights[i] / (weights_sum + 0.0001) for i in range(len(inputs))] 
+        return tf.add_n(outputs)
 
 
 def resample_feature_map(feat, 
@@ -79,13 +82,21 @@ def resample_feature_map(feat,
             if apply_bn:
                 feat = build_normalization(**normalization, name=name+"/bn")(feat)
         strides = int(width // target_width)
+        # if strides >= 2:
+        #     feat = tf.keras.layers.ZeroPadding2D(
+        #         padding=imagenet_utils.correct_pad(feat, strides + 1),
+        #         name=name + '/conv_pad')(feat)
+        #     pad = "valid"
+        # else:
+        #     pad = "same"
+       
         if pool_type == "max" or pool_type is None:
-            feat = tf.keras.layers.MaxPool2D(pool_size=strides+1,
+            feat = tf.keras.layers.MaxPool2D(pool_size=[strides + 1, strides + 1],
                                              strides=[strides, strides],
                                              padding="same",
                                              name=name + "/max_pool")(feat)
         elif pool_type == "avg":
-            feat = tf.keras.layers.AvgPool2D(pool_size=strides+1,
+            feat = tf.keras.layers.AvgPool2D(pool_size=strides + 1,
                                              strides=[strides, strides],
                                              padding="same",
                                              name=name + "/avg_pool")(feat)
@@ -165,11 +176,10 @@ def build_bifpn_layer(feats,
             new_node = WeightedFusion2(name=node_name)(nodes)
         if len(fnode["inputs_offsets"]) == 3:
             new_node = WeightedFusion3(name=node_name)(nodes)
-        
+    
         new_node_name = node_name + "/op_after_combine{}".format(len(feats))
         new_node = build_activation(
             **activation, name=new_node_name + "/" + activation["activation"])(new_node)
-
         new_node = build_convolution(convolution,
                                      filters=feat_dims,
                                      kernel_size=(3, 3),
@@ -207,6 +217,7 @@ def bifpn(inputs,
           name="fpn_cells",
           **kwargs):
     num_inputs = len(inputs)
+
     feats = inputs
     for i in range(min_level + num_inputs, max_level + 1):
         _, _, w, c = tf.keras.backend.int_shape(feats[-1])
