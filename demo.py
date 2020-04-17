@@ -56,13 +56,46 @@ def draw(img, box, label, score, names_dict, color=None):
     return img
 
 
-def inference(saved_model_dir, video_path, input_size=512):
+def preprocess(image, input_scale=None):
+    height, width, _ = image.shape
+    ratio = height / width
+    if height < width:
+        height = input_scale if input_scale else int((height // 128) * 128)
+        width = int(height / ratio // 128 * 128)
+    else:
+        width = input_scale if input_scale else int(width // 128 * 128)
+        height = int(ratio * width // 128 * 128)
+    
+    image = cv2.resize(cv2.cvtColor(image, cv2.COLOR_BGR2RGB), (width, height))
 
+    return image
+
+
+def inference(saved_model_dir, video_path, input_size=512):
     loaded = tf.saved_model.load(saved_model_dir, tags=[tf.saved_model.SERVING])
 
     infer = loaded.signatures[tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
     infer = loaded.signatures["serving_default"]
-    # loaded = tf.saved_model.load("./efficientdet/1/")
+
+    img = cv2.imread("./data/images/img.png")
+    height, width = img.shape[0:2]
+    img_data = tf.image.convert_image_dtype(preprocess(img.copy(), input_size)[np.newaxis, ...], tf.float32)
+    outputs = infer(img_data)
+    num = outputs["valid_detections"].numpy()[0]
+    boxes = outputs["nmsed_boxes"].numpy()[0][:num]
+    scores = outputs["nmsed_scores"].numpy()[0][:num]
+    classes = outputs["nmsed_classes"].numpy()[0][:num]
+    for i in range(num):
+        box = boxes[i] * np.array([height, width, height, width])
+        cls = classes[i]
+        img = draw(img, box, cls + 1, scores[i], coco_id_mapping, random_color(int(cls)))
+    
+    cv2.imshow("image", img)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+    if not os.path.exists(video_path):
+        return
 
     video = cv2.VideoCapture(video_path)
     
@@ -73,8 +106,7 @@ def inference(saved_model_dir, video_path, input_size=512):
         else:
             raise ValueError("No image!")
         frame_size = frame.shape[:2]
-        image_data = cv2.resize(np.copy(frame), (input_size, input_size))
-        image_data = tf.convert_to_tensor(image_data[np.newaxis, ...].astype(np.float32))
+        image_data = tf.image.convert_image_dtype(preprocess(frame.copy(), input_size)[np.newaxis, ...], tf.float32)
         prev_time = time.time()
         # print(infer(image_data))
         outputs = infer(image_data)
@@ -111,18 +143,18 @@ def main():
     parser = argparse.ArgumentParser(description="Demo args")
     parser.add_argument("--saved_model_dir", default="./saved_model/efficientdet/1", type=str)
     parser.add_argument("--video_path", default="../2.mp4", type=str)
-    parser.add_argument("--input_size", default=512, type=int)
+    parser.add_argument("--input_size", default=None, type=int)
 
     args = parser.parse_args()
 
     saved_model_dir = args.saved_model_dir
-    if not os.path.exists(saved_model_dir):
-        raise ValueError("{} not exists!".format(saved_model_dir))
     video_path = args.video_path
-    if not os.path.exists(video_path):
-        raise ValueError("{} not exists!".format(saved_model_dir))
 
     inference(saved_model_dir, video_path, args.input_size)
 
 if __name__ == "__main__":
+    physical_devices = tf.config.experimental.list_physical_devices("GPU")
+    for device in physical_devices:
+        tf.config.experimental.set_memory_growth(device=device, enable=True)
+
     main()

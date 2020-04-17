@@ -84,14 +84,14 @@ def conv_block(convolution,
 
 
 NMS = {
-    "non_max_suppression": BatchNonMaxSuppression,
+    "batch_non_max_suppression": BatchNonMaxSuppression,
     "fast_non_max_suppression": FastNonMaxSuppression,
-    "soft_non_max_suppression": BatchSoftNonMaxSuppression,
+    "batch_soft_non_max_suppression": BatchSoftNonMaxSuppression,
     "combined_non_max_suppression": CombinedNonMaxSuppression
 }
 
-def build_nms(nms, cfg):
-    return NMS[nms](cfg)
+def build_nms(nms, **kwargs):
+    return NMS[nms](**kwargs)
 
 
 __all__ = [

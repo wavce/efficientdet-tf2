@@ -30,7 +30,7 @@ class EfficientDet(Detector):
                                  dropblock=self.cfg.backbone.dropblock,
                                  input_tensor=inputs,
                                  input_shape=self.cfg.train.dataset.input_size + [3]).build_model()
-    
+      
         outputs = build_neck(self.cfg.neck.neck,
                              repeats=self.cfg.neck.repeats,
                              inputs=outputs,
@@ -44,7 +44,7 @@ class EfficientDet(Detector):
                              add_extra_conv=self.cfg.neck.add_extra_conv,
                              dropblock=self.cfg.neck.dropblock,
                              input_size=self.cfg.train.dataset.input_size[0]) 
-
+       
         outputs = self.head.build_head(outputs)
         return tf.keras.Model(inputs=inputs, outputs=outputs, name=self.cfg.detector)
     
@@ -53,17 +53,19 @@ class EfficientDet(Detector):
             pretrained_weights = tf.train.latest_checkpoint(pretrained_weight_path)
             use_exponential_moving_average = False
             # for w in tf.train.list_variables(pretrained_weights):
-            #     if "ExponentialMovingAverage" not in w[0]:
+            #     if "ExponentialMovingAverage" in w[0]:
             #         # use_exponential_moving_average = True
             #         print(w[0], w[1])
 
             for weight in self.model.weights:
                 name = weight.name.split(":")[0]
+                # if "/se/" in name and "efficientnet" in name:
                 # print(name, weight.shape)
-                # if "box-predict" in name or "class-predict" in name:
-                #     continue
+                # if "box_net" in name or "class_net" in name:
+                #     print(name, weight.shape)
                 if "batch_normalization" in name:
                     name = name.replace("batch_normalization", "tpu_batch_normalization")
+                # print(name, weight.shape)
                 # if use_exponential_moving_average:
                 #     name += "/ExponentialMovingAverage"
                 try:

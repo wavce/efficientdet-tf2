@@ -127,8 +127,9 @@ class SingleGPUTrainer(object):
 
     @tf.function(experimental_relax_shapes=True)
     def train_step(self, images, image_info):
+        normalized_images = tf.image.convert_image_dtype(images, tf.float32)
         with tf.GradientTape(persistent=True) as tape:
-            outputs = self.detector.model(images, training=True)
+            outputs = self.detector.model(normalized_images, training=True)
             loss_dict = self.detector.losses(outputs, image_info)
             loss = loss_dict["loss"] 
             if self.use_mixed_precision:
@@ -161,7 +162,7 @@ class SingleGPUTrainer(object):
             matched_boxes = tf.cast(matched_boxes, images.dtype)
             pred_boxes = tf.cast(pred_boxes, images.dtype)
             images = tf.image.draw_bounding_boxes(images=images,
-                                                  boxes=image_info["gt_boxes"],
+                                                  boxes=image_info["gt_boxes"] * (1. / image_info["input_size"]),
                                                   colors=tf.constant([[0., 0., 255.]]))
             images = tf.image.draw_bounding_boxes(images=images,
                                                   boxes=matched_boxes,
@@ -178,7 +179,8 @@ class SingleGPUTrainer(object):
 
     @tf.function(experimental_relax_shapes=True)
     def val_step(self, images, image_info):
-        outputs = self.detector.model(images, training=False)
+        normalized_images = tf.image.convert_image_dtype(images, tf.float32)
+        outputs = self.detector.model(normalized_images, training=False)
         loss_dict = self.detector.losses(outputs, image_info)
 
         for key, value in loss_dict.items():
@@ -193,7 +195,7 @@ class SingleGPUTrainer(object):
         matched_boxes, pred_boxes, pred_scores = self.detector.summary_boxes(outputs, image_info)
         matched_boxes = tf.cast(matched_boxes, images.dtype)
         pred_boxes = tf.cast(pred_boxes, images.dtype)
-        gt_boxes = image_info["gt_boxes"]
+        gt_boxes = image_info["gt_boxes"] * (1. / image_info["input_size"])
         if self.val_steps.value() % self.log_every_n_steps == 0:
             images = tf.image.draw_bounding_boxes(images=images,
                                                   boxes=gt_boxes,
@@ -254,7 +256,8 @@ class SingleGPUTrainer(object):
             #                     tf.greater(self.global_step.value(), 10000)):
             #     break
             
-            if tf.logical_and(self.global_step % self.cfg.val.val_every_n_steps == 0, self.global_step > self.total_train_steps // 3):
+            if tf.logical_and(self.global_step % self.cfg.val.val_every_n_steps == 0, 
+                              self.global_step > self.total_train_steps // 3):
                 # VAL LOOP
                 tf.print("=" * 150)
                 val_start = time.time()
@@ -292,3 +295,4 @@ class SingleGPUTrainer(object):
 
         self.summary_writer.close()
         tf.print(_time_to_string(), "Training over.")
+        

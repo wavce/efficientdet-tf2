@@ -13,11 +13,11 @@ class AnchorGenerator(object):
         aspect_ratios = tf.convert_to_tensor(aspect_ratios, dtype=self.dtype)
         input_h = feature_map_size[0]
         input_w = feature_map_size[1]
-        xx, yy = tf.meshgrid(tf.range(feature_map_size[0]),
-                             tf.range(feature_map_size[1]))
+        xx, yy = tf.meshgrid(tf.range(strides // 2, input_w * strides, strides),
+                             tf.range(strides // 2, input_h * strides, strides))
 
-        yy = (tf.cast(yy, self.dtype) + 0.5) * strides
-        xx = (tf.cast(xx, self.dtype) + 0.5) * strides
+        yy = tf.cast(yy, self.dtype)
+        xx = tf.cast(xx, self.dtype)
 
         h_ratio = tf.math.sqrt(aspect_ratios)
         w_ratio = 1. / h_ratio
@@ -53,6 +53,6 @@ class AnchorGenerator(object):
             anchors = tf.concat([anchors, anchors2, anchors3, anchors4], axis=0)
 
         anchors = tf.reshape(anchors, [input_h * input_w * num_anchors, 4])
-       
+
         return anchors
 

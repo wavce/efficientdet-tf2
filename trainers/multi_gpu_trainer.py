@@ -141,8 +141,9 @@ class MultiGPUTrainer(object):
             def distributed_train_step(images, labels):
                 # @tf.function(experimental_relax_shapes=True)
                 def step_fn(batch_images, batch_labels):
+                    normalized_images = tf.image.convert_image_dtype(batch_images, tf.float32)
                     with tf.GradientTape() as tape:
-                        outputs = self.detector.model(batch_images, training=True)
+                        outputs = self.detector.model(normalized_images, training=True)
                         loss_dict = self.detector.losses(outputs, batch_labels)
                         
                         loss = loss_dict["loss"] * (1. / self.num_replicas)
@@ -197,7 +198,8 @@ class MultiGPUTrainer(object):
             @tf.function(experimental_relax_shapes=True, input_signature=self.train_dataset.element_spec)
             def distributed_valuate_step(images, labels):
                 def step_fn(batch_images, batch_labels):
-                    outputs = self.detector.model(batch_images, training=False)
+                    normalized_images = tf.image.convert_image_dtype(batch_images, tf.float32)
+                    outputs = self.detector.model(normalized_images, training=False)
                     loss_dict = self.detector.losses(outputs, batch_labels)
 
                     for key, value in loss_dict.items():
@@ -337,4 +339,3 @@ class MultiGPUTrainer(object):
 
         self.manager.save(self.global_step)
         self.summary_writer.close()
-

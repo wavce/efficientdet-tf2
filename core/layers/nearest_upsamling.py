@@ -23,6 +23,8 @@ class NearestUpsampling2D(tf.keras.layers.Layer):
         # Instead of broadcasting with a 6-d tensor, we're using stacking here
         # for TfLite compatibity.
         bs, h, w, c = tf.shape(inputs)[0], tf.shape(inputs)[1], tf.shape(inputs)[2], tf.shape(inputs)[3]
+        # bs, h, w, c = inputs.get_shape().as_list()
+        # bs = -1 if bs is None else bs
         # outputs = tf.stack([inputs] * self.scale, axis=3)
         # outputs = tf.stack([outputs] * self.scale, axis=2)
         scale = self.scale

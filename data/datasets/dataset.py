@@ -100,6 +100,7 @@ class Dataset(object):
             total_anchors.append(anchors)
         
         total_anchors = tf.concat(total_anchors, 0)
+        
         target_boxes, target_labels = self.assigner(gt_boxes, gt_labels, total_anchors)
         
         return dict(target_boxes=target_boxes,

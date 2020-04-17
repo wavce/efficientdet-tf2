@@ -5,6 +5,7 @@ from core.bbox import Delta2Box
 from configs import build_configs
 from core.layers import build_nms
 from detectors import build_detector
+from core.anchors import AnchorGenerator
 
 
 def _generate_anchor_configs(min_level, max_level, num_scales, aspect_ratios):
@@ -84,20 +85,42 @@ class EfficientDet(tf.keras.Model):
 
         self.input_size = cfg.val.dataset.input_size if image_size is None else image_size
         self.model = build_detector(cfg.detector, cfg=cfg).model
-        self.nms = build_nms("combined_non_max_suppression", cfg)
+        
+        self.nms = build_nms("combined_non_max_suppression", 
+                             pre_nms_size=5000,
+                             post_nms_size=100,
+                             iou_threshold=0.5,
+                             score_threshold=0.2,
+                             num_classes=90)
         self.delta2box = Delta2Box(mean=None, std=None)
+        self.aspect_ratios = [1., 0.5, 2.]
+        base_scale = 4
+        strides = [8, 16, 32, 64, 128]
+        self.anchor_scales = [[2 ** (i / 3) * s * base_scale
+                               for i in range(3)] for s in strides]
         anchors_configs = _generate_anchor_configs(3, 7, 3, [(1.0, 1.0), (1.4, 0.7), (0.7, 1.4)])
         anchors = _generate_anchor_boxes(self.input_size, 4, anchors_configs)
+ 
+        # self.anchors = tf.convert_to_tensor([anchors], tf.float32)
+        # self.normalizer = tf.convert_to_tensor(
+        #     [[[self.input_size[0], self.input_size[1], self.input_size[0], self.input_size[1]]]], tf.float32)
+        self.anchor_generator = AnchorGenerator()
 
-        self.anchors = tf.convert_to_tensor([anchors], tf.float32)
-        self.normalizer = tf.convert_to_tensor(
-            [[[self.input_size[0], self.input_size[1], self.input_size[0], self.input_size[1]]]], tf.float32)
-
-    @tf.function
+    @tf.function(experimental_relax_shapes=True)
     def call(self, inputs):
+        total_anchors = []
+        input_size = tf.shape(inputs)[1:3]
+
+        normalizer = tf.convert_to_tensor(
+            [[[input_size[0], input_size[1], input_size[0], input_size[1]]]], tf.float32)
+        for i, level in enumerate(range(3, 7 + 1)):
+            anchors = self.anchor_generator(input_size // (2 ** level), self.anchor_scales[i], self.aspect_ratios, 2 ** level)
+            total_anchors.append(anchors)
+        
+        total_anchors = tf.concat(total_anchors, 0)
         predicted_boxes, predicted_labels = self.model(inputs, training=False)
-        predicted_boxes = self.delta2box(self.anchors, predicted_boxes)
-        predicted_boxes = tf.clip_by_value(predicted_boxes / self.normalizer, 0, 1)
+        predicted_boxes = self.delta2box(total_anchors, predicted_boxes)
+        predicted_boxes = tf.clip_by_value(predicted_boxes / normalizer, 0, 1)
         predicted_scores = tf.nn.sigmoid(predicted_labels)
         # tf.print(predicted_boxes)
         # tf.print(tf.reduce_max(predicted_scores))
@@ -115,7 +138,7 @@ def save_model(image_size=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sabed model args")
-    parser.add_argument("--input_size", default=None, type=list)
+    parser.add_argument("--input_size", default=[512, 512], type=list)
 
     args = parser.parse_args()
 

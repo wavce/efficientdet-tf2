@@ -48,7 +48,6 @@ class Delta2Box(object):
         bhw = tf.math.exp(delta[..., 2:4]) * phw
 
         boxes = tf.concat([byx - bhw * 0.5, byx + bhw * 0.5], axis=-1)
-        boxes = tf.clip_by_value(boxes, 0, 3000)
 
         return boxes
 

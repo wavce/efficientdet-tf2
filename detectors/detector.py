@@ -21,7 +21,7 @@ class Detector(metaclass=ABCMeta):
         else:
             self.init_weights(cfg.train.pretrained_weights_path)
 
-        self.nms = CombinedNonMaxSuppression(cfg)
+        self.nms = CombinedNonMaxSuppression(**cfg.postprocess.as_dict())
     
     @property
     def num_classes(self):

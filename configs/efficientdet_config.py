@@ -48,27 +48,14 @@ num_classes = 90
 
 min_level = 3
 max_level = 7
-phi = 5
+phi = 0
 batch_size = 2
-# num_scales = 3
-# base_scale = 4
-# strides = [8, 16, 32, 64, 128]
-# anchor_scales = [[2 ** (i / num_scales) * s * base_scale
-#                   for i in range(num_scales)] for s in strides]
-num_scales = 3 # 3
+num_scales = 3
 aspect_ratios = [1., 0.5, 2.]
-base_scale = 8  # 8
-step = 2 ** (1 / (num_scales - 1))
+base_scale = 4
 strides = [8, 16, 32, 64, 128]
-anchor_scales = [[base_scale * (step ** i) for i in range(0, num_scales)],
-                 [base_scale * (step ** i) for i in range(num_scales, num_scales * 2)],
-                 [base_scale * (step ** i) for i in range(num_scales * 2, num_scales * 3)],
-                 [base_scale * (step ** i) for i in range(num_scales * 3, num_scales * 4)],
-                 [base_scale * (step ** i) for i in range(num_scales * 4, num_scales * 5)]]
-anchor_scales = [[8.0, 12., 16.], [22., 32., 45.], [64., 90., 128.], [181., 256., 362.], [406., 448., 512.]]  # input=512
-# anchor_scales = [[8.0, 12., 16.], [22., 32., 45.], [64., 90., 128.], [181., 256., 362.], [406., 512., 640.]]  # input=640
-# anchor_scales = [[8.0, 12., 16.], [22., 32., 45.], [64., 90., 128.], [181., 256., 362.], [512., 640., 768.]]  # input=768
-# anchor_scales = [[8.0, 12., 16.], [22., 32., 45.], [64., 90., 128.], [181., 256., 362.], [512., 640., 986.]]  # input=896
+anchor_scales = [[2 ** (i / num_scales) * s * base_scale
+                  for i in range(num_scales)] for s in strides]
 
 input_size = get_input_dim(phi) 
 CFG = params_dict.ParamsDict(default_params={
@@ -148,7 +135,7 @@ CFG = params_dict.ParamsDict(default_params={
         "num_anchors": num_scales  * len(aspect_ratios),
         "num_classes": num_classes,  # 2
         "strides": strides,
-        "prior": 0.01,
+        "prior": 0.001,
         "weight_decay": 4e-5,
         "use_sigmoid": True,
         "min_level": min_level,
@@ -164,8 +151,8 @@ CFG = params_dict.ParamsDict(default_params={
     },
     "assigner": {
         "assigner": "max_iou_assigner",
-        "pos_iou_thresh": 0.35,
-        "neg_iou_thresh": 0.35,
+        "pos_iou_thresh": 0.5,
+        "neg_iou_thresh": 0.5,
         "min_level": min_level,
         "max_level": max_level
     },
@@ -271,14 +258,15 @@ CFG = params_dict.ParamsDict(default_params={
         },
         "samples": 3222,
         "num_classes": num_classes,
-        "val_every_n_steps": 15000,
+        "val_every_n_steps": 4000,
     }, 
     "postprocess": {
-        "pre_nms_size": 100,   # select top_k high confident detections for nms 
-        "post_nms_size": 50,
+        "pre_nms_size": 5000,   # select top_k high confident detections for nms 
+        "post_nms_size": 100,
         "iou_threshold": 0.5,
         "score_threshold": 0.2,
         "use_sigmoid": True,
+        "num_classes": True,
     }},
     restrictions=[
         "head.num_classes == train.num_classes",
