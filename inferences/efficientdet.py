@@ -138,11 +138,14 @@ def save_model(image_size=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sabed model args")
-    parser.add_argument("--input_size", default=[512, 512], type=list)
+    parser.add_argument("--input_size", default="512x512", type=str)
 
     args = parser.parse_args()
 
     input_size = args.input_size
+    if input_size is not None:
+    	assert "x" in input_size, "input_size must like 512x512"
+    	input_size = [int(s) for s in input_size.split("x")]
 
     save_model(input_size)
 
