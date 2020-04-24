@@ -28,7 +28,7 @@ class NearestUpsampling2D(tf.keras.layers.Layer):
         # outputs = tf.stack([inputs] * self.scale, axis=3)
         # outputs = tf.stack([outputs] * self.scale, axis=2)
         scale = self.scale
-        data = tf.reshape(inputs, [bs, h, 1, w, 1, c]) * tf.ones([1, 1, scale, 1, scale, 1])
+        data = tf.reshape(inputs, [bs, h, 1, w, 1, c]) * tf.ones([1, 1, scale, 1, scale, 1], dtype=inputs.dtype)
         return tf.reshape(data, [bs, h * scale, w * scale, c])
 
     def compute_output_shape(self, input_shape):

@@ -79,27 +79,29 @@ def _generate_anchor_boxes(image_size, anchor_scale, anchor_configs):
 
 
 class EfficientDet(tf.keras.Model):
-    def __init__(self, image_size=None, **kwargs):
+    def __init__(self, model_name="efficientdet-d0", image_size=None, **kwargs):
         super(EfficientDet, self).__init__(**kwargs)
-        cfg = build_configs("efficientdet")
+        cfg = build_configs(model_name)
 
-        self.input_size = cfg.val.dataset.input_size if image_size is None else image_size
+        self.input_size = cfg.input_size if image_size is None else image_size
+        cfg.override(dict(input_size=self.input_size))
+       
         self.model = build_detector(cfg.detector, cfg=cfg).model
         
         self.nms = build_nms("combined_non_max_suppression", 
-                             pre_nms_size=5000,
-                             post_nms_size=100,
-                             iou_threshold=0.5,
-                             score_threshold=0.2,
-                             num_classes=90)
-        self.delta2box = Delta2Box(mean=None, std=None)
-        self.aspect_ratios = [1., 0.5, 2.]
-        base_scale = 4
-        strides = [8, 16, 32, 64, 128]
-        self.anchor_scales = [[2 ** (i / 3) * s * base_scale
-                               for i in range(3)] for s in strides]
-        anchors_configs = _generate_anchor_configs(3, 7, 3, [(1.0, 1.0), (1.4, 0.7), (0.7, 1.4)])
-        anchors = _generate_anchor_boxes(self.input_size, 4, anchors_configs)
+                             pre_nms_size=cfg.postprocess.pre_nms_size,
+                             post_nms_size=cfg.postprocess.post_nms_size,
+                             iou_threshold=cfg.postprocess.iou_threshold,
+                             score_threshold=cfg.postprocess.score_threshold,
+                             num_classes=cfg.num_classes)
+        self.delta2box = Delta2Box(mean=cfg.bbox_mean, std=cfg.bbox_std)
+        self.aspect_ratios = cfg.anchor.aspect_ratios
+        self.anchor_scales = cfg.anchor.scales
+        # base_scale = cfg.anchor_scale
+        # strides = [8, 16, 32, 64, 128]
+        # self.anchor_scales = [[2 ** (i / 3) * s * base_scale for i in range(3)] for s in strides]
+        # anchors_configs = _generate_anchor_configs(3, 7, 3, [(1.0, 1.0), (1.4, 0.7), (0.7, 1.4)])
+        # anchors = _generate_anchor_boxes(self.input_size, 4, anchors_configs)
  
         # self.anchors = tf.convert_to_tensor([anchors], tf.float32)
         # self.normalizer = tf.convert_to_tensor(
@@ -114,11 +116,12 @@ class EfficientDet(tf.keras.Model):
         normalizer = tf.convert_to_tensor(
             [[[input_size[0], input_size[1], input_size[0], input_size[1]]]], tf.float32)
         for i, level in enumerate(range(3, 7 + 1)):
-            anchors = self.anchor_generator(input_size // (2 ** level), self.anchor_scales[i], self.aspect_ratios, 2 ** level)
+            anchors = self.anchor_generator(
+                input_size // (2 ** level), self.anchor_scales[i], self.aspect_ratios[i], 2 ** level)
             total_anchors.append(anchors)
-        
         total_anchors = tf.concat(total_anchors, 0)
-        predicted_boxes, predicted_labels = self.model(inputs, training=False)
+        outputs = self.model(inputs, training=False)
+        predicted_boxes, predicted_labels = outputs["predicted_boxes"], outputs["predicted_labels"]
         predicted_boxes = self.delta2box(total_anchors, predicted_boxes)
         predicted_boxes = tf.clip_by_value(predicted_boxes / normalizer, 0, 1)
         predicted_scores = tf.nn.sigmoid(predicted_labels)
@@ -128,24 +131,25 @@ class EfficientDet(tf.keras.Model):
         return self.nms(predicted_boxes, predicted_scores)
 
 
-def save_model(image_size=None):
-    efficientdet = EfficientDet(image_size)
+def save_model(model_name="efficientdet-d0", image_size=None):
+    efficientdet = EfficientDet(model_name, image_size)
     input_size = efficientdet.input_size
     efficientdet(tf.random.uniform([1] + list(input_size) + [3], 0, 1), training=False)
     # test(efficientdet)
-    tf.saved_model.save(efficientdet, "./saved_model/efficientdet/1/")
+    tf.saved_model.save(efficientdet, "./saved_model/{}/1/".format(model_name))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sabed model args")
-    parser.add_argument("--input_size", default="512x512", type=str)
+    parser.add_argument("--model_name", default="efficientdet-d0", type=str)
+    parser.add_argument("--input_size", default=None, type=str)
 
     args = parser.parse_args()
-
+    
     input_size = args.input_size
     if input_size is not None:
     	assert "x" in input_size, "input_size must like 512x512"
     	input_size = [int(s) for s in input_size.split("x")]
 
-    save_model(input_size)
+    save_model(args.model_name, input_size)
 

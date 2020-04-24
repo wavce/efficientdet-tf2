@@ -13,11 +13,20 @@ class Objects365Dataset(Dataset):
     def __init__(self, 
                  dataset_dir, 
                  training=True,
+                 min_level=3,
+                 max_level=7,
                  batch_size=32, 
                  input_size=(512, 512), 
                  augmentation=dict(),
                  **kwargs):
-        super(Objects365Dataset, self).__init__(dataset_dir, training, batch_size, input_size, augmentation, **kwargs)
+        super(Objects365Dataset, self).__init__(dataset_dir=dataset_dir, 
+                                                training=training, 
+                                                min_level=min_level,
+                                                max_level=max_level,
+                                                batch_size=batch_size, 
+                                                input_size=input_size, 
+                                                augmentation=augmentation, 
+                                                **kwargs)
 
         self.tf_record_sources = glob.glob(os.path.join(self.dataset_dir, "*.tfrecord"))
 
@@ -28,13 +37,11 @@ class Objects365Dataset(Dataset):
             f.close()
             return buf == b'\xff\xd9'  # 判定jpg是否包含结束字段
 
-    def create_tfrecord(self):
+    def create_tfrecord(self, dataset_dir):
         if self.training:
-            tfrecord_writer = tf.io.TFRecordWriter(
-                path=os.path.join(self.dataset_dir, "train/" + "0.tfrecord"))
+            tfrecord_writer = tf.io.TFRecordWriter(path=os.path.join(dataset_dir, "train/" + "0.tfrecord"))
         else:
-            tfrecord_writer = tf.io.TFRecordWriter(
-                path=os.path.join(self.dataset_dir, "val/" + ".tfrecord"))
+            tfrecord_writer = tf.io.TFRecordWriter(path=os.path.join(dataset_dir, "val/" + ".tfrecord"))
 
         n = 0
         json_file = os.path.join(self.dataset_dir, "training" + ".json")
@@ -147,7 +154,11 @@ class Objects365Dataset(Dataset):
             image, boxes, labels = self.augment(image, boxes, labels)
         else:
             image = tf.image.resize(image, self.input_size)
-
+        
+        image = tf.cast(image, tf.uint8)
+        input_size = tf.convert_to_tensor(
+            [[self.input_size[0], self.input_size[1], self.input_size[0], self.input_size[1]]], tf.float32)
+        boxes *= input_size
         if self._use_fcos_assigner:
             image_info = self._build_fcos_targets(boxes, labels)
         elif self._use_mask_assigner:
@@ -165,6 +176,7 @@ class Objects365Dataset(Dataset):
 
         image_info["gt_boxes"] = boxes
         image_info["gt_labels"] = labels
+        image_info["input_size"] = input_size
 
         return image, image_info
 

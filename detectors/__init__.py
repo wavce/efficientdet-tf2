@@ -13,8 +13,16 @@ DETECTOR = {
 }
 
 
-def build_detector(name, **kwargs):
-    return DETECTOR[name](**kwargs)
+def build_detector(detector, **kwargs):
+    if detector.startswith("efficientdet"):
+        name = "efficientdet"
+        return DETECTOR[name](**kwargs)
+    
+    if detector.startswith("efficientdet") and detector.endswith("fcos"):
+        name = "effcientdet_fcos"
+        return DETECTOR[name](**kwargs)
+    
+    return DETECTOR[detector](**kwargs)
 
 
 __all__ = ["FCOS",

@@ -1,7 +1,6 @@
 import enum
 import tensorflow as tf
 from core.layers import conv_block
-from configs.params_dict import ParamsDict
 
 
 COMBINATION_OPS = enum.Enum("COMBINATION_OPS", ["SUM", "GLOBAL_ATTENTION"])
@@ -115,8 +114,6 @@ def nas_fpn(inputs,
             weight_decay=0.,
             dropblock=None,
             name="nas_fpn_neck"):
-    normalization = normalization.as_dict() if isinstance(normalization, ParamsDict) else normalization
-    activation = activation.as_dict() if isinstance(activation, ParamsDict) else activation
     kernel_regularizer = (tf.keras.regularizers.l2(weight_decay) 
                           if weight_decay is not None and weight_decay > 0 else None) 
     num_outputs = max_level - min_level + 1

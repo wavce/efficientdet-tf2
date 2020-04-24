@@ -119,16 +119,16 @@ def mbconv_block(inputs,
         x = inputs
 
     # Depthwise Convolution
-    if block_args.strides == 2:
-        x = tf.keras.layers.ZeroPadding2D(
-            padding=imagenet_utils.correct_pad(x, block_args.kernel_size),
-            name=name + '/dwconv_pad')(x)
-        conv_pad = 'valid'
-    else:
-        conv_pad = 'same'
+    # if block_args.strides == 2:
+    #     x = tf.keras.layers.ZeroPadding2D(
+    #         padding=imagenet_utils.correct_pad(x, block_args.kernel_size),
+    #         name=name + '/dwconv_pad')(x)
+    #     conv_pad = 'valid'
+    # else:
+    #     conv_pad = 'same'
     x = tf.keras.layers.DepthwiseConv2D(kernel_size=block_args.kernel_size,
                                         strides=block_args.strides,
-                                        padding=conv_pad,
+                                        padding="same",
                                         data_format=data_format,
                                         use_bias=False,
                                         trainable=trainable,

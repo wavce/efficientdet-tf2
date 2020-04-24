@@ -2,7 +2,7 @@ import tensorflow as tf
 
 
 def build_learning_rate_scheduler(**kwargs):
-    scheduler = kwargs.pop("learning_rate_scheduler")
+    scheduler = kwargs.pop("scheduler")
     warmup_steps = kwargs.pop("warmup_steps")
     if scheduler == "piecewise_constant":
         boundaries = kwargs.pop("boundaries")

@@ -12,7 +12,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("name",
-                    default="efficientdet",
+                    default="efficientdet-d0",
                     help="The detector name, e.g. "
                          " `efficientdet`, `efficient_fcos`.")
 flags.DEFINE_bool("multi_gpu_training",

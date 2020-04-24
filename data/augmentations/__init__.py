@@ -24,9 +24,10 @@ CROPS = {
 
 
 class Compose(object):
-    def __init__(self, aug_cfgs):
+    def __init__(self, input_size, aug_cfgs):
         self.aug_cfgs = aug_cfgs
 
+        self.input_size = input_size
         self.crop_cfgs = [cfg for cfg in aug_cfgs if list(cfg.keys())[0] in CROPS]
         
         self.other_cfgs = [cfg for cfg in aug_cfgs if list(cfg.keys())[0] not in CROPS]
@@ -41,11 +42,13 @@ class Compose(object):
         if should_apply_op(prob1):
             crop_type = list(self.crop_cfgs[0].keys())[0]
             aug_kwargs = self.crop_cfgs[0][crop_type]
-            image, boxes, labels = CROPS[crop_type](**aug_kwargs)(image, boxes, labels)
+            image, boxes, labels = CROPS[crop_type](
+                input_size=self.input_size, **aug_kwargs)(image, boxes, labels)
         else:
             crop_type = list(self.crop_cfgs[1].keys())[0]
             aug_kwargs = self.crop_cfgs[1][crop_type]
-            image, boxes, labels = CROPS[crop_type](**aug_kwargs)(image, boxes, labels)
+            image, boxes, labels = CROPS[crop_type](
+                input_size=self.input_size, **aug_kwargs)(image, boxes, labels)
 
         return image, boxes, labels
 
@@ -61,6 +64,6 @@ class Compose(object):
             crop_type = list(self.crop_cfgs[0].keys())[0]
             aug_kwargs = self.crop_cfgs[0][crop_type]
             aug_kwargs.pop("probability")
-            image, boxes, labels = CROPS[crop_type](**aug_kwargs)(image, boxes, labels)
+            image, boxes, labels = CROPS[crop_type](input_size=self.input_size, **aug_kwargs)(image, boxes, labels)
 
         return image, boxes, labels

@@ -8,6 +8,8 @@ class Dataset(object):
     def __init__(self, 
                  dataset_dir, 
                  training=True,
+                 min_level=3,
+                 max_level=7,
                  batch_size=32, 
                  input_size=(512, 512), 
                  augmentation=[],
@@ -20,22 +22,20 @@ class Dataset(object):
         self.num_images_per_record = 10000
 
         self.tf_record_sources = None
-
+        
+        self.min_level = min_level
+        self.max_level = max_level
         if "anchor" in kwargs and kwargs["anchor"]:
-            self.anchor_kwargs = kwargs["anchor"]
-            self.min_level = self.anchor_kwargs["min_level"]
-            self.max_level = self.anchor_kwargs["max_level"]
+            self.anchor_args = kwargs.pop("anchor")
             self.anchor_generator = AnchorGenerator()
 
-        self.assigner_kwargs = kwargs["assigner"]
-        self.min_level = self.assigner_kwargs.pop("min_level")
-        self.max_level = self.assigner_kwargs.pop("max_level")
-       
-        self._use_fcos_assigner = self.assigner_kwargs["assigner"] == "fcos_assigner"
-        self._use_mask_assigner = "mask" in self.assigner_kwargs["assigner"]
-        self.assigner = build_assigner(**self.assigner_kwargs)
+        self.assigner_args = kwargs.pop("assigner")
+        assigner_name = self.assigner_args["assigner"]
+        self._use_fcos_assigner = assigner_name == "fcos_assigner"
+        self._use_mask_assigner = "mask" in assigner_name
+        self.assigner = build_assigner(**self.assigner_args)
 
-        self.augment = Compose(augmentation) if augmentation is not None else None
+        self.augment = Compose(input_size, augmentation) if augmentation is not None else None
 
     def is_valid_jpg(self, jpg_file):
         with open(jpg_file, 'rb') as f:
@@ -43,6 +43,28 @@ class Dataset(object):
             buf = f.read()
             f.close()
             return buf == b'\xff\xd9'  # 判定jpg是否包含结束字段
+    
+    def _bytes_list(self, value):
+        if isinstance(value, tuple):
+            value = list(value)
+        if isinstance(value, list):
+            return tf.train.BytesList(value=value)
+        return tf.train.BytesList(value=[value])
+
+    def _int64_list(self, value):
+        if isinstance(value, tuple):
+            value = list(value)
+        if isinstance(value, list):
+            return tf.train.Int64List(value=value)
+        return tf.train.Int64List(value=[value])
+
+    def _float_list(self, value):
+        if isinstance(value, tuple):
+            value = list(value)
+        if isinstance(value, list):
+            return tf.train.FloatList(value=value)
+        return tf.train.FloatList(value=[value])
+
     @property
     def rgb_mean(self):
         return tf.constant([0.485 * 255, 0.456 * 255, 0.406 * 255], dtype=tf.float32)
@@ -51,7 +73,7 @@ class Dataset(object):
     def rgb_std(self):
         return tf.constant([0.229 * 255, 0.224 * 255, 0.225 * 255], dtype=tf.float32)
 
-    def create_tfrecord(self):
+    def create_tfrecord(self, image_dir, image_info_file, output_dir, num_shards):
         raise NotImplementedError()
 
     def parser(self, serialized):
@@ -63,12 +85,12 @@ class Dataset(object):
         target_attentions = []
         total_anchors = dict()
         for i, level in enumerate(range(self.min_level, self.max_level + 1)):
-            strides = self.anchor_kwargs["strides"][i]
+            strides = 2 ** level
             feat_h = int(math.ceil(self.input_size[0] // strides))
             feat_w = int(math.ceil(self.input_size[1] // strides))
             anchors = self.anchor_generator(feature_map_size=[feat_h, feat_w], 
-                                            scales=self.anchor_kwargs["scales"][i], 
-                                            aspect_ratios=self.anchor_kwargs["aspect_ratios"][i],  
+                                            scales=self.anchor_args.scales[i], 
+                                            aspect_ratios=self.anchor_args.aspect_ratios[i],  
                                             strides=strides)
 
             t_boxes, t_labels, t_attentions = self.assigner(gt_boxes, gt_labels, anchors)
@@ -90,17 +112,16 @@ class Dataset(object):
     def _build_targets(self, gt_boxes, gt_labels):
         total_anchors = []
         for i, level in enumerate(range(self.min_level, self.max_level + 1)):
-            strides = self.anchor_kwargs["strides"][i]
+            strides = 2 ** level
             feat_h = int(math.ceil(self.input_size[0] // strides))
             feat_w = int(math.ceil(self.input_size[1] // strides))
             anchors = self.anchor_generator(feature_map_size=[feat_h, feat_w], 
-                                            scales=self.anchor_kwargs["scales"][i], 
-                                            aspect_ratios=self.anchor_kwargs["aspect_ratios"][i], 
+                                            scales=self.anchor_args.scales[i], 
+                                            aspect_ratios=self.anchor_args.aspect_ratios[i], 
                                             strides=strides)
             total_anchors.append(anchors)
         
         total_anchors = tf.concat(total_anchors, 0)
-        
         target_boxes, target_labels = self.assigner(gt_boxes, gt_labels, total_anchors)
         
         return dict(target_boxes=target_boxes,
@@ -126,7 +147,7 @@ class Dataset(object):
             t_boxes, t_labels, t_centerness = self.assigner(
                 gt_boxes=gt_boxes, gt_labels=gt_labels, 
                 grid_y=yy, grid_x=xx, strides=strides,
-                object_size_of_interest=self.assigner_kwargs["object_sizes_of_interest"][i])
+                object_size_of_interest=self.assigner_args["object_sizes_of_interest"][i])
 
             yy = tf.reshape(yy, [feat_h * feat_w])
             xx = tf.reshape(xx, [feat_h * feat_w])

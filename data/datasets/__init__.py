@@ -8,8 +8,8 @@ DATASET = {
 }
 
 
-def build_dataset(dataset, **kwargs):
-    return DATASET[dataset](**kwargs).dataset()
+def build_dataset(name, **kwargs):
+    return DATASET[name](**kwargs).dataset()
 
 
 __all__ = [

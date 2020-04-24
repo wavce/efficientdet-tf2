@@ -57,6 +57,9 @@ def draw(img, box, label, score, names_dict, color=None):
 
 
 def preprocess(image, input_scale=None):
+    if isinstance(input_scale, (list, tuple)):
+        return cv2.resize(cv2.cvtColor(image, cv2.COLOR_BGR2RGB), tuple(input_scale))
+
     height, width, _ = image.shape
     ratio = height / width
     if height < width:
@@ -71,15 +74,15 @@ def preprocess(image, input_scale=None):
     return image
 
 
-def inference(saved_model_dir, video_path, input_size=512):
+def inference(saved_model_dir, video_path, input_size):
     loaded = tf.saved_model.load(saved_model_dir, tags=[tf.saved_model.SERVING])
 
     infer = loaded.signatures[tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
     infer = loaded.signatures["serving_default"]
 
-    img = cv2.imread("./data/images/img.png")
+    img = cv2.imread("/home/bail/Workspace/efficientdet/img.png")
     height, width = img.shape[0:2]
-    img_data = tf.image.convert_image_dtype(preprocess(img.copy(), input_size)[np.newaxis, ...], tf.float32)
+    img_data = tf.image.convert_image_dtype(preprocess(img, input_size)[np.newaxis, ...], tf.float32)
     outputs = infer(img_data)
     num = outputs["valid_detections"].numpy()[0]
     boxes = outputs["nmsed_boxes"].numpy()[0][:num]

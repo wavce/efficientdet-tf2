@@ -1,6 +1,5 @@
 import tensorflow as tf
 from core.layers import conv_block
-from configs.params_dict import ParamsDict
 from core.layers import build_normalization
 
 def fpn(inputs,
@@ -16,7 +15,6 @@ def fpn(inputs,
         add_extra_conv=False,
         name="fpn_neck",
         **Kwargs):
-    activation = activation.as_dict() if isinstance(activation, ParamsDict) else activation
     laterals = []
     num_outputs = max_level - min_level + 1
     num_inputs = len(inputs)

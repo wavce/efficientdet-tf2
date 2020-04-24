@@ -1,285 +1,213 @@
 import math
-from configs import params_dict
+from configs import Config
 
 
-def fpn_filters(phi, upper=6):
-    if phi >= upper:
-        phi = upper
+def default_detection_configs(phi, 
+                              min_level=3, 
+                              max_level=7, 
+                              fpn_filters=64,
+                              neck_repeats=3,
+                              head_repeats=3,
+                              anchor_scale=4,
+                              num_scales=3,
+                              batch_size=4,
+                              image_size=512,
+                              fusion_type="weighted_sum"):
+    h = Config()
 
-    multiplier = math.ceil(64 * (1.35 ** phi) / 8)
-    if phi == 4:
-        multiplier += 1
+    # model name
+    h.detector = "efficientdet-d%d" % phi
+    h.min_level = min_level
+    h.max_level = max_level
+    h.dtype = "float16"
 
-    filters = multiplier * 8
-
-    return int(filters)
-
-
-def num_necks(phi):
-    if phi <= 4:
-        return int(phi + 3)
-    if phi == 5:
-        return 7
-    if phi == 6:
-        return 8
-    if phi == 7:
-        return 8
-
-
-def num_heads(phi, upper=6):
-    if phi >= upper:
-        phi = upper
-
-    return int(3 + math.floor(phi / 3))
-
-
-def get_input_dim(phi):
-    if phi <= 4:
-        return int(512 + 128 * phi)
+    # backbone
+    h.backbone = dict(backbone="efficientnet-b%d" % phi,
+                      convolution="depthwise_conv2d",
+                      dropblock=None,
+                    #   dropblock=dict(keep_prob=None,
+                    #                  block_size=None)
+                      normalization=dict(normalization="batch_norm",
+                                         momentum=0.99,
+                                         epsilon=1e-3,
+                                         axis=-1,
+                                         trainable=False),
+                      activation=dict(activation="swish"),
+                      strides=[2, 1, 2, 2, 2, 1, 2, 1],
+                      dilation_rates=[1, 1, 1, 1, 1, 1, 1, 1],
+                      output_indices=[3, 4, 5],
+                      frozen_stages=[-1])
     
-    if phi == 5 or phi == 6:
-        return 1280
+    # neck
+    h.neck = dict(neck="bifpn",
+                  repeats=neck_repeats,
+                  convolution="separable_conv2d",
+                  dropblock=None,
+                #   dropblock=dict(keep_prob=None,
+                #                  block_size=None)
+                  feat_dims=fpn_filters,
+                  normalization=dict(normalization="batch_norm",
+                                     momentum=0.99,
+                                     epsilon=1e-3,
+                                     axis=-1,
+                                     trainable=False),
+                  activation=dict(activation="swish"),
+                  add_extra_conv=False,  # Add extra convolution for neck
+                  fusion_type=fusion_type, 
+                  use_multiplication=False)
+    
+    # head
+    h.head = dict(head="RetinaNetHead",
+                  repeats=head_repeats,
+                  convolution="separable_conv2d",
+                  dropblock=None,
+                #   dropblock=dict(keep_prob=None,
+                #                  block_size=None)
+                  feat_dims=fpn_filters,
+                  normalization=dict(normalization="batch_norm",
+                                     momentum=0.99,
+                                     epsilon=1e-3,
+                                     axis=-1,
+                                     trainable=False),
+                  activation=dict(activation="swish"),
+                  prior=0.01)
+    
+    # anchors parameters
+    strides = [2 ** l for l in range(min_level, max_level + 1)]
+    h.anchor = dict(aspect_ratios=[[1., 0.5, 2.]] * (max_level - min_level + 1),
+                    scales=[
+                        [2 ** (i / num_scales) * s * anchor_scale 
+                        for i in range(num_scales)] for s in strides
+                    ],
+                    num_anchors=9)
 
-    if phi == 7:
-        return 1536 
+    # assigner
+    h.assigner = dict(assigner="max_iou_assigner",
+                      pos_iou_thresh=0.5,
+                      neg_iou_thresh=0.5)
+    # sampler
+    h.sampler = dict(sampler="pseudo_sampler")
+    
+    # loss
+    h.use_sigmoid = True
+    h.label_loss=dict(loss="focal_loss",
+                      alpha=0.25,
+                      gamma=1.5,
+                      label_smoothing=0.,
+                      weight=1.,
+                      from_logits=True,
+                      reduction="none")
+    h.bbox_loss=dict(loss="smooth_l1_loss",
+                     weight=50.,   # 50.
+                     delta=.1,    # .1
+                     reduction="none")
+    # h.box_loss=dict(loss="giou_loss",
+    #                 weight=10.,
+    #                 reduction="none")
+    h.weight_decay = 4e-5
+
+    h.bbox_mean = None,  # [0., 0., 0., 0.]
+    h.bbox_std = None,  # [0.1, 0.1, 0.2, 0.2]
+
+    # dataset
+    h.num_classes = 90
+    h.skip_crowd_during_training = True
+    h.dataset = "objects365"
+
+    h.batch_size = batch_size
+    h.input_size = [image_size, image_size]
+    h.train_dataset_dir = "/home/bail/Data/data1/Dataset/Objects365/train"
+    h.val_dataset_dir = "/home/bail/Data/data1/Dataset/Objects365/train"
+    h.augmentation = [
+        dict(ssd_crop=dict(patch_area_range=(0.3, 1.),
+                            aspect_ratio_range=(0.5, 2.0),
+                            min_overlaps=(0.1, 0.3, 0.5, 0.7, 0.9),
+                            max_attempts=100,
+                            probability=.5)),
+        # dict(data_anchor_sampling=dict(anchor_scales=(16, 32, 64, 128, 256, 512),
+        #                                overlap_threshold=0.7,
+        #                                max_attempts=50,
+        #                                probability=.5)),
+        dict(flip_left_to_right=dict(probability=0.5)),
+        dict(random_distort_color=dict(probability=1.))
+        ]
+
+    # train
+    h.pretrained_weights_path = "/home/bail/Workspace/pretrained_weights/efficientdet-d%d" % phi
+
+    h.optimizer = dict(optimizer="sgd", momentum=0.9)
+    h.lookahead = None
+
+    h.train_steps = 240000
+    h.learning_rate_scheduler = dict(scheduler="cosine", initial_learning_rate=0.002)
+    h.warmup = dict(warmup_learning_rate = 0.00001, steps = 24000)
+    h.checkpoint_dir = "checkpoints/efficientdet_d%d" % phi
+    h.summary_dir = "logs/efficientdet_d%d" % phi
+
+    h.gradient_clip_norm = .0
+
+    h.log_every_n_steps = 500
+    h.save_ckpt_steps = 10000
+    h.val_every_n_steps = 4000
+
+    h.postprocess = dict(pre_nms_size=5000,   # select top_k high confident detections for nms 
+                         post_nms_size=100,
+                         iou_threshold=0.5,
+                         score_threshold=0.2)
+    
+    return h
 
 
-num_classes = 90
+efficientdet_model_param_dict = {
+    "efficientdet-d0": dict(phi=0, 
+                            fpn_filters=64, 
+                            neck_repeats=3, 
+                            head_repeats=3, 
+                            image_size=512),
+    "efficientdet-d1": dict(phi=1, 
+                            fpn_filters=88, 
+                            neck_repeats=4, 
+                            head_repeats=3, 
+                            image_size=640),
+    "efficientdet-d2": dict(phi=2, 
+                            fpn_filters=112, 
+                            neck_repeats=5, 
+                            head_repeats=3, 
+                            image_size=768),
+    "efficientdet-d3": dict(phi=3, 
+                            fpn_filters=160, 
+                            neck_repeats=6, 
+                            head_repeats=4, 
+                            image_size=896),
+    "efficientdet-d4": dict(phi=4, 
+                            fpn_filters=224, 
+                            neck_repeats=7, 
+                            head_repeats=4, 
+                            image_size=1024),
+    "efficientdet-d5": dict(phi=5, 
+                            fpn_filters=288, 
+                            neck_repeats=7, 
+                            head_repeats=4, 
+                            image_size=1280),
+    "efficientdet-d6": dict(phi=6, 
+                            fpn_filters=384, 
+                            neck_repeats=8, 
+                            head_repeats=5, 
+                            image_size=1280, 
+                            fusion_type="sum"),
+    "efficientdet-d7": dict(phi=7, 
+                            fpn_filters=384, 
+                            neck_repeats=8, 
+                            head_repeats=5, 
+                            anchor_scale=5.,
+                            image_size=1536, 
+                            fusion_type="sum"),
+}
 
-min_level = 3
-max_level = 7
-phi = 0
-batch_size = 2
-num_scales = 3
-aspect_ratios = [1., 0.5, 2.]
-base_scale = 4
-strides = [8, 16, 32, 64, 128]
-anchor_scales = [[2 ** (i / num_scales) * s * base_scale
-                  for i in range(num_scales)] for s in strides]
 
-input_size = get_input_dim(phi) 
-CFG = params_dict.ParamsDict(default_params={
-    "detector": "efficientdet",
-    "dtype": "float32",  # model dtype, if float16, means use mixed precision training.
-    "phi": phi,
-    "backbone": {
-        "backbone": "efficientnet-b%d" % phi,
-        "convolution": None,
-        # "dropblock": {
-        #     "dropblock_keep_prob": None,
-        #     "dropblock_size": None,
-        # },
-        "dropblock": None,
-        "normalization": {
-            "normalization": "batch_norm",
-            "momentum": 0.99,
-            "epsilon": 1e-3,
-            "center": True,
-            "scale": True,
-            "axis": -1,
-            "trainable": False
-        },
-        "activation": {"activation": "swish"},
-        "strides": [2, 1, 2, 2, 2, 1, 2, 1],
-        "dilation_rates": [1, 1, 1, 1, 1, 1, 1, 1],
-        "output_indices": [3, 4, 5],
-        "frozen_stages": [-1],
-        "weight_decay": 4e-5
-    },
-    "neck": {
-        "neck": "bifpn",
-        "repeats": num_necks(phi),
-        "convolution": "separable_conv2d",
-        "feat_dims": fpn_filters(phi),
-        # "normalization":  {
-        #     "normalization": "filter_response_norm",
-        # },
-        # "activation": None,
-        "normalization": {
-            "normalization": "batch_norm",
-            "momentum": 0.99,
-            "epsilon": 1e-3,
-            "center": True,
-            "scale": True,
-            "axis": -1,
-            "trainable": True
-        },
-        "activation": {"activation": "swish"},
-        "dropblock": None,
-        "add_extra_conv": False,  # Add extra convolution for neck
-        "use_multiplication": False,  # Use multiplication in neck, default False
-        "min_level": min_level,
-        "max_level": max_level,
-        "weight_decay": 4e-5
-    },
-    "head": {
-        "head": "RetinaNetHead",
-        "repeats": num_heads(phi),
-        "convolution": "separable_conv2d",
-        # "normalization":  {
-        #     "normalization": "filter_response_norm",
-        # },
-        # "activation": None,
-        "normalization": {
-            "normalization": "batch_norm",
-            "momentum": 0.99,
-            "epsilon": 1e-3,
-            "center": True,
-            "scale": True,
-            "axis": -1,
-            "trainable": True
-        },
-        "activation": {"activation": "swish"},
-        "dropblock": None,
-        "feat_dims": fpn_filters(phi),
-        "num_anchors": num_scales  * len(aspect_ratios),
-        "num_classes": num_classes,  # 2
-        "strides": strides,
-        "prior": 0.001,
-        "weight_decay": 4e-5,
-        "use_sigmoid": True,
-        "min_level": min_level,
-        "max_level": max_level
-    },
-    "anchor": {
-        "num_anchors": num_scales * len(aspect_ratios),
-        "strides": strides,
-        "scales": anchor_scales,
-        "aspect_ratios": [aspect_ratios] * (max_level - min_level + 1),
-        "min_level": min_level,
-        "max_level": max_level,
-    },
-    "assigner": {
-        "assigner": "max_iou_assigner",
-        "pos_iou_thresh": 0.5,
-        "neg_iou_thresh": 0.5,
-        "min_level": min_level,
-        "max_level": max_level
-    },
-    "sampler": {"sampler": "pseudo_sampler"},
-    "loss": {
-        "label_loss": {
-            "loss": "focal_loss",
-            "alpha": 0.25,
-            "gamma": 1.5,
-            "label_smoothing": 0.,
-            "weight": 1.,
-            "from_logits": True,
-            "use_sigmoid": True,
-            "reduction": "none"
-        },
-        "bbox_loss": {
-            "loss": "smooth_l1_loss",
-            "weight": 50.,   # 50.
-            "delta": .1,    # .1
-            "reduction": "none"
-        },
-        # "bbox_loss": {
-        #     "loss": "giou_loss",
-        #     "weight": 10.,
-        #     "reduction": "none"
-        # },
-        "weight_decay": 4e-5
-    },
-    "bbox_decoder": {
-            "bbox_mean": [0., 0., 0., 0.],
-            "bbox_std": [0.1, 0.1, 0.2, 0.2]
-        },
-    "bbox_encoder":  {
-            "bbox_mean": [0., 0., 0., 0.],
-            "bbox_std": [0.1, 0.1, 0.2, 0.2]
-        },
-       "train": {
-        "dataset": {
-            "dataset": "objects365",
-            "batch_size": batch_size,
-            "input_size": [input_size, input_size],
-            "dataset_dir": "/home/bail/Data/data1/Dataset/Objects365/train",
-            "training": True,
-            "augmentation": [
-                dict(ssd_crop=dict(input_size=[input_size, input_size],
-                                   patch_area_range=(0.3, 1.),
-                                   aspect_ratio_range=(0.5, 2.0),
-                                   min_overlaps=(0.1, 0.3, 0.5, 0.7, 0.9),
-                                   max_attempts=100,
-                                   probability=.5)),
-                # dict(data_anchor_sampling=dict(input_size=[input_size, input_size],
-                #                                anchor_scales=(16, 32, 64, 128, 256, 512),
-                #                                overlap_threshold=0.7,
-                #                                max_attempts=50,
-                #                                probability=.5)),
-                dict(flip_left_to_right=dict(probability=0.5)),
-                dict(random_distort_color=dict(probability=1.))
-            ]
-        },
-        "samples": 12876,
-        "num_classes": num_classes,  # 2 
-
-        "pretrained_weights_path": "/home/bail/Workspace/pretrained_weights/efficientdet-d%d" % phi,
-
-        "optimizer": {
-            "optimizer": "sgd",
-            "momentum": 0.9,
-        },
-        "lookahead": None,
-        "mixed_precision": {
-            "loss_scale": None,  # The loss scale in mixed precision training. If None, use dynamic.
-        },
-
-        "train_steps": 240000,
-        "learning_rate_scheduler": {
-            # "learning_rate_scheduler": "piecewise_constant",
-            # "initial_learning_rate": initial_learning_rate,
-            # "boundaries": boundaries,
-            # "values": values
-            "learning_rate_scheduler": "cosine",
-            "initial_learning_rate": 0.002
-        },
-        "warmup": {
-            "warmup_learning_rate": 0.00001,
-            "steps": 24000,
-        },
-        "checkpoint_dir": "checkpoints/efficientdet_d%d" % phi,
-        "summary_dir": "logs/efficientdet_d%d" % phi,
-
-        "gradient_clip_norm": .0,
-
-        "log_every_n_steps": 500,
-        "save_ckpt_steps": 10000,
-    },
-    "val": {
-        "dataset": {
-            "dataset": "objects365",
-            "batch_size": batch_size,
-            "input_size": [input_size, input_size],
-            "dataset_dir": "/home/bail/Data/data1/Dataset/Objects365/train",
-            "training": False,
-            "augmentation": None,
-        },
-        "samples": 3222,
-        "num_classes": num_classes,
-        "val_every_n_steps": 4000,
-    }, 
-    "postprocess": {
-        "pre_nms_size": 5000,   # select top_k high confident detections for nms 
-        "post_nms_size": 100,
-        "iou_threshold": 0.5,
-        "score_threshold": 0.2,
-        "use_sigmoid": True,
-        "num_classes": True,
-    }},
-    restrictions=[
-        "head.num_classes == train.num_classes",
-        "neck.feat_dims == head.feat_dims",
-        "bbox_decoder.bbox_mean == bbox_encoder.bbox_mean",
-        "bbox_decoder.bbox_std == bbox_encoder.bbox_std",
-        "loss.weight_decay == head.weight_decay",
-        "loss.weight_decay == neck.weight_decay",
-        "train.dataset.dataset == val.dataset.dataset"
-])
+def get_efficientdet_config(model_name="efficientdet-d0"):
+    return default_detection_configs(**efficientdet_model_param_dict[model_name])
 
 
 if __name__ == "__main__":
-    # print(CFG.as_dict())
-    # print(CFG.train.learning_rate_scheduler.as_dict())
-    print(anchor_scales)
+    print(get_efficientdet_config("efficientdet-d7"))

@@ -1,3 +1,6 @@
+import os
+import glob
+import random
 import tensorflow as tf
 from xml.etree import ElementTree as ET
 from data.datasets.dataset import Dataset
@@ -19,29 +22,8 @@ class PASCALVOC(Dataset):
                                         **kwargs)
         assert os.path.exists(data_dir), "%s not exits." % data_dir
 
-    def _bytes_list(self, value):
-        if isinstance(value, tuple):
-            value = list(value)
-        if isinstance(value, list):
-            return tf.train.BytesList(value=value)
-        return tf.train.BytesList(value=[value])
-
-    def _int64_list(self, value):
-        if isinstance(value, tuple):
-            value = list(value)
-        if isinstance(value, list):
-            return tf.train.Int64List(value=value)
-        return tf.train.Int64List(value=[value])
-
-    def _float_list(self, value):
-        if isinstance(value, tuple):
-            value = list(value)
-        if isinstance(value, list):
-            return tf.train.FloatList(value=value)
-        return tf.train.FloatList(value=[value])
-
-    def create_tfrecord(self):
-        image_files = glob.glob(os.path.join(self.data_dir, "*/*.jpg"))
+    def create_tfrecord(self, data_dir, num_shards):
+        image_files = glob.glob(os.path.join(data_dir, "*/*.jpg"))
         image_files = [f for f in image_files if os.path.exists(f) and os.path.exists(f.replace("jpg", "xml"))]
         random.shuffle(image_files)
 

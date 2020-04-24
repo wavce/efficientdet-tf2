@@ -1,11 +1,8 @@
-from configs import efficientdet_config
-
-
-CFG_DICT = {
-    "efficientdet": efficientdet_config
-}
+from .base_config import Config
+from configs.efficientdet_config import get_efficientdet_config
 
 
 def build_configs(name):
-    return CFG_DICT[name].CFG
+    if name.startswith("efficientdet"):
+        return get_efficientdet_config(name)
 

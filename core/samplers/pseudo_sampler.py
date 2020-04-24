@@ -20,17 +20,18 @@ class PseudoSampler(Sampler):
                 assigned_labels (Tensor): The assigned labels in assigner.
             
             Returns:
-                A dict -> target_boxes, target_labels, positive_indices, label_inidces
+                A dict -> target_boxes, target_labels, box_weights, label_weights
         """
-        pos_inds = tf.squeeze(tf.where(assigned_labels >= 1), 1)
-        label_inds = tf.squeeze(tf.where(assigned_labels >= 0), 1)
+        pos_mask = assigned_labels >= 1
+        
+        box_weights = tf.expand_dims(tf.cast(pos_mask, assigned_boxes.dtype), -1)
+        valid_mask = assigned_labels >= 0
+        target_labels = tf.where(valid_mask, assigned_labels, tf.zeros_like(assigned_labels))
+        label_weights = tf.cast(valid_mask, assigned_labels.dtype)
 
-        target_boxes = tf.gather(assigned_boxes, pos_inds)
-        target_labels = tf.gather(assigned_labels, label_inds)
-
-        return dict(target_boxes=target_boxes,
+        return dict(target_boxes=assigned_boxes,
                     target_labels=target_labels,
-                    positive_indices=pos_inds,
-                    label_indices=label_inds,
-                    num_pos=tf.size(pos_inds))
+                    box_weights=box_weights,
+                    label_weights=label_weights,
+                    num_pos=tf.reduce_sum(box_weights))
         

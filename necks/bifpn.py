@@ -2,7 +2,6 @@ import tensorflow as tf
 from core.layers import build_activation
 from core.layers import build_convolution
 from core.layers import build_normalization
-from configs.params_dict import ParamsDict
 from core.layers import NearestUpsampling2D
 from tensorflow.python.keras.applications import imagenet_utils
 
@@ -23,14 +22,13 @@ class WeightedFusion2(tf.keras.layers.Layer):
         
         super(WeightedFusion2, self).build(input_shape)
 
-    def call(self, inputs, training=None): 
+    def call(self, inputs, training=None):
         w1 = tf.nn.relu(self.w1)
         w2 = tf.nn.relu(self.w2)
-        weights = [w1, w2]
-       
-        weights_sum = tf.add_n(weights)
-        outputs = [inputs[i] * weights[i] / (weights_sum + 0.0001) for i in range(len(inputs))] 
-        return tf.add_n(outputs)
+        divisor = tf.add_n([w1, w2]) + self.epsilon
+        outputs = tf.add_n([w1 * inputs[0], w2 * inputs[1]]) * (1. / divisor)
+
+        return outputs
 
 
 class WeightedFusion3(tf.keras.layers.Layer):
@@ -55,10 +53,9 @@ class WeightedFusion3(tf.keras.layers.Layer):
         w1 = tf.nn.relu(self.w1)
         w2 = tf.nn.relu(self.w2)
         w3 = tf.nn.relu(self.w3)
-        weights = [w1, w2, w3]
-        weights_sum = tf.add_n(weights)
-        outputs = [inputs[i] * weights[i] / (weights_sum + 0.0001) for i in range(len(inputs))] 
-        return tf.add_n(outputs)
+        divisor = tf.add_n([w1, w2, w3]) + self.epsilon
+        outputs = tf.add_n([w1 * inputs[0], w2 * inputs[1], w3 * inputs[2]]) * (1. / divisor)
+        return outputs
 
 
 def resample_feature_map(feat, 
@@ -71,7 +68,7 @@ def resample_feature_map(feat,
                          apply_bn=True, 
                          name="resample"):
     """Resample input feature map to have target number of channels and width.""" 
-    _, width, _, num_channels = tf.keras.backend.int_shape(feat)
+    _, _, width, num_channels = tf.keras.backend.int_shape(feat)
     if width > target_width:
         if num_channels != target_num_channels:
             feat = build_convolution("conv2d",
@@ -82,21 +79,21 @@ def resample_feature_map(feat,
             if apply_bn:
                 feat = build_normalization(**normalization, name=name+"/bn")(feat)
         strides = int(width // target_width)
+
         # if strides >= 2:
         #     feat = tf.keras.layers.ZeroPadding2D(
         #         padding=imagenet_utils.correct_pad(feat, strides + 1),
-        #         name=name + '/conv_pad')(feat)
+        #         name=name + '/stem/conv_pad')(feat)
         #     pad = "valid"
         # else:
         #     pad = "same"
-       
         if pool_type == "max" or pool_type is None:
-            feat = tf.keras.layers.MaxPool2D(pool_size=[strides + 1, strides + 1],
+            feat = tf.keras.layers.MaxPool2D(pool_size=strides+1,
                                              strides=[strides, strides],
                                              padding="same",
                                              name=name + "/max_pool")(feat)
         elif pool_type == "avg":
-            feat = tf.keras.layers.AvgPool2D(pool_size=strides + 1,
+            feat = tf.keras.layers.AvgPool2D(pool_size=strides+1,
                                              strides=[strides, strides],
                                              padding="same",
                                              name=name + "/avg_pool")(feat)
@@ -120,13 +117,16 @@ def resample_feature_map(feat,
 
 def _verify_feats_size(feats, input_size, min_level, max_level):
     expected_output_width = [
-        int(input_size / 2**l) for l in range(min_level, max_level + 1)
+        int(input_size[1] / 2**l) for l in range(min_level, max_level + 1)
     ]
-    for cnt, width in enumerate(expected_output_width):
-        if feats[cnt].shape[1] != width:
+    expected_output_height = [
+        int(input_size[0] / 2**l) for l in range(min_level, max_level + 1)
+    ]
+    for cnt, (height, width) in enumerate(zip(expected_output_height, expected_output_width)):
+        if feats[cnt].shape[2] != width or feats[cnt].shape[1] != height:
             raise ValueError('feats[{}] has shape {} but its width should be {}.'
                             '(input_size: {}, min_level: {}, max_level: {}.)'.format(
-                                cnt, feats[cnt].shape, width, input_size, min_level,
+                                cnt, feats[cnt].shape, (height, width), input_size, min_level,
                                 max_level))
 
 
@@ -139,7 +139,8 @@ def build_bifpn_layer(feats,
                       min_level=3,
                       max_level=7,
                       pool_type=None, 
-                      apply_bn=True, 
+                      apply_bn=True,
+                      fusion_type="weighted_sum", 
                       name="fpn_cells",
                       **kwargs):
     F = lambda x: 1.0 / (2 ** x)  # Resolution size for a given feature level.
@@ -158,7 +159,7 @@ def build_bifpn_layer(feats,
     for i, fnode in enumerate(node_configs):
         nodes = []
         node_name = name + "/fnode{}".format(i)
-        new_node_width = int(fnode["width_ratio"] * input_size)
+        new_node_width = int(fnode["width_ratio"] * input_size[1])
         for idx, input_offset in enumerate(fnode["inputs_offsets"]):
             input_node = feats[input_offset]
             num_output_connections[input_offset] += 1
@@ -172,14 +173,20 @@ def build_bifpn_layer(feats,
                                               apply_bn=apply_bn,
                                               name=node_name + "/resample_{}_{}_{}".format(idx, input_offset, len(feats)))
             nodes.append(input_node)
-        if len(fnode["inputs_offsets"]) == 2:
-            new_node = WeightedFusion2(name=node_name)(nodes)
-        if len(fnode["inputs_offsets"]) == 3:
-            new_node = WeightedFusion3(name=node_name)(nodes)
-    
+        if fusion_type == "weighted_sum":
+            if len(fnode["inputs_offsets"]) == 2:
+                new_node = WeightedFusion2(name=node_name)(nodes)
+            if len(fnode["inputs_offsets"]) == 3:
+                new_node = WeightedFusion3(name=node_name)(nodes)
+        elif fusion_type == "sum":
+            new_node = tf.keras.layers.Add(name=node_name)(nodes)
+        else:
+            raise  ValueError("Unknown fusion type: {}".format(fusion_type))
+        
         new_node_name = node_name + "/op_after_combine{}".format(len(feats))
         new_node = build_activation(
             **activation, name=new_node_name + "/" + activation["activation"])(new_node)
+
         new_node = build_convolution(convolution,
                                      filters=feat_dims,
                                      kernel_size=(3, 3),
@@ -214,13 +221,13 @@ def bifpn(inputs,
           max_level=7,
           pool_type=None, 
           apply_bn=True, 
+          fusion_type="weighted_sum",
           name="fpn_cells",
           **kwargs):
     num_inputs = len(inputs)
-
     feats = inputs
     for i in range(min_level + num_inputs, max_level + 1):
-        _, _, w, c = tf.keras.backend.int_shape(feats[-1])
+        _, _, w, _ = tf.keras.backend.int_shape(feats[-1])
         feats.append(resample_feature_map(feats[-1],
                                           target_width=w // 2,
                                           target_num_channels=feat_dims,
@@ -243,6 +250,7 @@ def bifpn(inputs,
                                   max_level=max_level,
                                   pool_type=pool_type,
                                   apply_bn=apply_bn,
+                                  fusion_type=fusion_type,
                                   name=name + "/cell_{}".format(rep))
         _verify_feats_size(feats, input_size, min_level, max_level)
     

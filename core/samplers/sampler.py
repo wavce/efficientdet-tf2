@@ -31,7 +31,7 @@ class Sampler(metaclass=ABCMeta):
                 gt_labels (Tensor): ground truth labels.
             
             Returns:
-                A dict -> target_boxes, target_labels, positive_indices, label_inidces
+                A dict -> target_boxes, target_labels, box_weights, label_weights
         """
         if self.add_gt_as_proposals:
             assigned_boxes = tf.concat([gt_boxes, assigned_boxes], 0)
@@ -49,14 +49,15 @@ class Sampler(metaclass=ABCMeta):
                 num_expected_neg = neg_upper_bound
         neg_inds = self.negative_sampler._sample_negative(assigned_labels, num_expected_neg, **kwargs)
 
-        target_boxes = tf.gather(assigned_boxes, pos_inds)
+        box_weights = tf.zeros_like(assigned_labels, dtype=tf.float32)
+        box_weights = tf.tensor_scatter_nd_update(box_weights, pos_inds, tf.ones_like(pos_inds, box_weights.dtype))
+        label_weights = tf.tensor_scatter_nd_update(box_weights, neg_inds, tf.ones_like(neg_inds, label_weights.dtype))
+        target_labels = tf.where(label_weights >= 1, target_labels, tf.zeros_like(target_labels))
+        box_weights = tf.expand_dims(box_weights, -1)
 
-        label_inds = tf.concat([pos_inds, neg_inds], 0)
-        target_labels = tf.gather(assigned_labels, label_inds)
-
-        return dict(target_boxes=target_boxes,
+        return dict(target_boxes=assigned_boxes,
                     target_labels=target_labels,
-                    positive_indices=pos_inds,
-                    label_indices=label_inds,
-                    num_pos=tf.size(pos_inds))
+                    box_weights=box_weights,
+                    label_weights=label_weights,
+                    num_pos=tf.reduce_sum(box_weights))
 

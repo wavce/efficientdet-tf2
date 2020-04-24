@@ -20,24 +20,22 @@ class RetinaNetHead(Head):
                               strides=(1, 1),
                               padding="same",
                               use_bias=cfg.head.normalization is None or cfg.head.convolution == "separable_conv2d",
-                              kernel_regularizer=self.kernel_regularizer,
                               name="box_net/box-%d" % i)
             for i in range(cfg.head.repeats)
         ]
         self.class_shared_convs = [
             build_convolution(convolution=cfg.head.convolution,
-                             filters=cfg.head.feat_dims,
-                             kernel_size=(3, 3),
-                             strides=(1, 1),
-                             padding="same",
-                             use_bias=cfg.head.normalization is None or cfg.head.convolution == "separable_conv2d",
-                             kernel_regularizer=self.kernel_regularizer,
-                             name="class_net/class-%d" % i)
+                              filters=cfg.head.feat_dims,
+                              kernel_size=(3, 3),
+                              strides=(1, 1),
+                              padding="same",
+                              use_bias=cfg.head.normalization is None or cfg.head.convolution == "separable_conv2d",
+                              name="class_net/class-%d" % i)
             for i in range(cfg.head.repeats)
         ]
 
         self.classifier = build_convolution(cfg.head.convolution,
-                                            filters=cfg.head.num_classes * cfg.head.num_anchors,
+                                            filters=cfg.num_classes * cfg.anchor.num_anchors,
                                             kernel_size=(3, 3),
                                             strides=(1, 1),
                                             padding="same",
@@ -46,27 +44,22 @@ class RetinaNetHead(Head):
                                                 -math.log((1. - cfg.head.prior) / cfg.head.prior)),
                                             name="class_net/class-predict")
         self.regressor = build_convolution(cfg.head.convolution,
-                                           filters=4 * cfg.head.num_anchors,
+                                           filters=4 * cfg.anchor.num_anchors,
                                            kernel_size=(3, 3),
                                            strides=(1, 1),
                                            padding="same",
                                            use_bias=True,
                                            name="box_net/box-predict")
-        self.delta2box = Delta2Box(mean=cfg.bbox_decoder.bbox_mean,
-                                   std=cfg.bbox_decoder.bbox_std)
-        self.box2delta = Box2Delta(mean=cfg.bbox_decoder.bbox_mean,
-                                   std=cfg.bbox_decoder.bbox_std)
+        self.delta2box = Delta2Box(mean=cfg.bbox_mean, std=cfg.bbox_std)
+        self.box2delta = Box2Delta(mean=cfg.bbox_mean, std=cfg.bbox_std)
 
-        self._use_iou_loss = "iou" in cfg.loss.bbox_loss.loss
-        self.bbox_loss_func = build_loss(**cfg.loss.bbox_loss.as_dict())
-        self.label_loss_func = build_loss(**cfg.loss.label_loss.as_dict())
         self.sampler = build_sampler(**cfg.sampler.as_dict())
         self.cfg = cfg
 
     def build_head(self, inputs):
         predicted_boxes = list()
         predicted_labels = list()
-        for i, level in enumerate(range(self.cfg.head.min_level, self.cfg.head.max_level+1)):
+        for i, level in enumerate(range(self.cfg.min_level, self.cfg.max_level+1)):
             box_feat = prediction_head(inputs[i],
                                        self.box_shared_convs,
                                        normalization=self.cfg.head.normalization,
@@ -102,5 +95,6 @@ class RetinaNetHead(Head):
         predicted_labels = tf.keras.layers.Concatenate(
             axis=1, name="class_net/concat")(predicted_labels)
 
-        return predicted_boxes, predicted_labels
+        return dict(predicted_boxes=predicted_boxes, 
+                    predicted_labels=predicted_labels)
     

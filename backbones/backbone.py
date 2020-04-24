@@ -1,5 +1,4 @@
 import tensorflow as tf
-from configs.params_dict import ParamsDict
 
 
 class Backbone(object):
@@ -42,13 +41,13 @@ class Backbone(object):
         self.strides = strides
         self.frozen_stages = frozen_stages
         self.dilation_rates = dilation_rates
-        self.normalization = normalization if not isinstance(normalization, ParamsDict) else normalization.as_dict()
+        self.normalization = normalization 
         self.convolution = convolution
-        self.activation = activation if not isinstance(activation, ParamsDict) else activation.as_dict()
+        self.activation = activation 
         self.weight_decay = weight_decay
         self.l2_regularizer = (tf.keras.regularizers.l2(weight_decay) 
                                if weight_decay is not None and weight_decay > 0 else None)
-        self.dropblock = dropblock if not isinstance(dropblock, ParamsDict) else dropblock.as_dict()
+        self.dropblock = dropblock 
         self.pretrained_weights_path = pretrained_weights_path
 
         if input_tensor is None:

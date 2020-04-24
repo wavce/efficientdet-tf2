@@ -1,10 +1,11 @@
 ### Updates
 - Apr21: Fixed a few bugs and update readme.
-
+- Apr24: Update config 
 
 ### 1. efficientdet-tf2
 [1] Mingxing Tan, Ruoming Pang, Quoc V. Le. EfficientDet: Scalable and Efficient Object Detection. CVPR 2020.
 Arxiv link: https://arxiv.org/abs/1911.09070
+[2] https://github.com/google/automl
 
 This is the tf2.0 version of efficientdet.
 
