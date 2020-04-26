@@ -120,7 +120,7 @@ class SingleGPUTrainer(object):
                 
                 return decayed * global_step + self.warmup_learning_rate 
     
-            if self.cfg.train.learning_rate_scheduler.learning_rate_scheduler == "piecewise_constant":
+            if self.cfg.learning_rate_scheduler.scheduler == "piecewise_constant":
                 return self._learning_rate_scheduler(global_step)
 
             return self._learning_rate_scheduler(global_step - self.warmup_steps)

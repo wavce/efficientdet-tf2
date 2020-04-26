@@ -106,8 +106,8 @@ def default_detection_configs(phi,
     #                 reduction="none")
     h.weight_decay = 4e-5
 
-    h.bbox_mean = None,  # [0., 0., 0., 0.]
-    h.bbox_std = None,  # [0.1, 0.1, 0.2, 0.2]
+    h.bbox_mean = None  # [0., 0., 0., 0.]
+    h.bbox_std = None  # [0.1, 0.1, 0.2, 0.2]
 
     # dataset
     h.num_classes = 90

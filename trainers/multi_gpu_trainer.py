@@ -25,15 +25,15 @@ class MultiGPUTrainer(object):
     def __init__(self, cfg):
         strategy = tf.distribute.MirroredStrategy()
         self.num_replicas = strategy.num_replicas_in_sync
-        self.train_batch_size = self.num_replicas * cfg.train.dataset.batch_size 
-        self.val_batch_size = self.num_replicas * cfg.val.dataset.batch_size
+        self.train_batch_size = self.num_replicas * cfg.batch_size 
+        self.val_batch_size = self.num_replicas * cfg.batch_size
 
         train_dataset = build_dataset(name=cfg.dataset,
                                       dataset_dir=cfg.train_dataset_dir,
                                       training=True,
                                       min_level=cfg.min_level,
                                       max_level=cfg.max_level,
-                                      batch_size=cfg.batch_size,
+                                      batch_size=self.train_batch_size,
                                       input_size=cfg.input_size,
                                       augmentation=cfg.augmentation,
                                       assigner=cfg.assigner.as_dict(),
@@ -43,7 +43,7 @@ class MultiGPUTrainer(object):
                                     training=False,
                                     min_level=cfg.min_level,
                                     max_level=cfg.max_level,
-                                    batch_size=cfg.batch_size,
+                                    batch_size=self.val_batch_size,
                                     input_size=cfg.input_size,
                                     augmentation=None,
                                     assigner=cfg.assigner.as_dict(),
@@ -155,7 +155,6 @@ class MultiGPUTrainer(object):
                                 self.training_loss_metrics[key].update_state(value)
 
                         if self.global_step.value() % self.log_every_n_steps == 0:
-                            # tf.print(self.optimizer.loss_scale._current_loss_scale, self.optimizer.loss_scale._num_good_steps)
                             matched_boxes, nmsed_boxes, _, _ = self.detector.summary_boxes(outputs, batch_labels)
                             batch_gt_boxes = batch_labels["gt_boxes"] * (1. / batch_labels["input_size"]) 
                             batch_images = tf.cast(batch_images, tf.float32)
@@ -175,7 +174,7 @@ class MultiGPUTrainer(object):
 
                         return loss
                 
-                per_replica_losses = self.strategy.experimental_run_v2(step_fn, args=(images, labels))
+                per_replica_losses = self.strategy.run(step_fn, args=(images, labels))
                 return self.strategy.reduce(tf.distribute.ReduceOp.SUM,
                                             per_replica_losses,
                                             axis=None)
@@ -219,9 +218,11 @@ class MultiGPUTrainer(object):
                                 with self.summary_writer.as_default():
                                     tf.summary.image("valuate/images", batch_images, self.val_steps.value(), 5)
 
-                        return batch_gt_boxes, batch_labels["gt_labels"], nmsed_boxes * batch_labels["input_size"], nmsed_scores, nmsed_classes + 1
+                        return (batch_gt_boxes, batch_labels["gt_labels"],
+                                nmsed_boxes * batch_labels["input_size"], 
+                                nmsed_scores, nmsed_classes + 1)
 
-                return self.strategy.experimental_run_v2(step_fn, args=(images, labels))
+                return self.strategy.run(step_fn, args=(images, labels))
             
             def learning_rate_scheduler(global_step):
                 with tf.name_scope("learning_rate_scheduler"):
@@ -233,7 +234,7 @@ class MultiGPUTrainer(object):
                         return ((self.initial_learning_rate - self.warmup_learning_rate) 
                                 * global_step / self.warmup_steps + self.warmup_learning_rate)
                         
-                    if self.cfg.train.learning_rate_scheduler.learning_rate_scheduler == "piecewise_constant":
+                    if self.cfg.learning_rate_scheduler.scheduler == "piecewise_constant":
                         return self._learning_rate_scheduler(global_step)
 
                     return self._learning_rate_scheduler(global_step - self.warmup_steps)
