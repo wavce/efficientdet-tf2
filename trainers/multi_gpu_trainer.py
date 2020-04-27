@@ -78,6 +78,10 @@ class MultiGPUTrainer(object):
             self.warmup_steps = cfg.warmup.steps
             self.warmup_learning_rate = cfg.warmup.warmup_learning_rate
             self.initial_learning_rate = cfg.learning_rate_scheduler.initial_learning_rate
+            self._learning_rate_scheduler = build_learning_rate_scheduler(
+                **cfg.learning_rate_scheduler.as_dict(), 
+                steps=self.total_train_steps, 
+                warmup_steps=self.warmup_steps)
         
             self.global_step = tf.Variable(initial_value=0,
                                            trainable=False,
@@ -228,8 +232,6 @@ class MultiGPUTrainer(object):
                 with tf.name_scope("learning_rate_scheduler"):
                     global_step = tf.cast(global_step, tf.float32)
                     if tf.less(global_step, self.warmup_steps):
-                        # decayed = 0.5 * (1. - tf.math.cos(math.pi * global_step / self.warmup_steps))
-                        # return self.cfg.train.warmup.learning_rate * decayed
 
                         return ((self.initial_learning_rate - self.warmup_learning_rate) 
                                 * global_step / self.warmup_steps + self.warmup_learning_rate)
@@ -319,11 +321,11 @@ class MultiGPUTrainer(object):
                     
                         ap = self.ap_metric.result()
                         self.ap_metric.reset_states()
-                        tf.summary.scalar("val/ap", ap, self.global_step)
+                        tf.summary.scalar("val/ap", ap[0], self.global_step)
                         template.extend(["ap =", ap, "(%.2fs)." % (val_end - val_start)])
                     tf.print(*template)
 
-                    if ap > max_ap:
+                    if tf.logical_or(ap > max_ap, ap - max_ap > -1.):
                         self.manager.save(self.global_step)
                         tf.print(_time_to_string(), "Saving detector to %s." % self.manager.latest_checkpoint)
                         max_ap = ap

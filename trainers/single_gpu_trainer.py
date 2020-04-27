@@ -114,8 +114,6 @@ class SingleGPUTrainer(object):
         with tf.name_scope("learning_rate_scheduler"):
             global_step = tf.cast(global_step, tf.float32)
             if tf.less(global_step, self.warmup_steps):
-                # decayed = 0.5 * (1. - tf.math.cos(math.pi * global_step / self.warmup_steps))
-                # return self.cfg.train.warmup.learning_rate * decayed
                 decayed = (self.initial_learning_rate - self.warmup_learning_rate) /  self.warmup_steps
                 
                 return decayed * global_step + self.warmup_learning_rate 
@@ -145,7 +143,7 @@ class SingleGPUTrainer(object):
                 gradients = self.optimizer.get_unscaled_gradients(gradients)
             
             if self.cfg.gradient_clip_norm > 0.0:
-                gradients, _ = tf.clip_by_global_norm(gradients, self.cfg.train.gradient_clip_norm)
+                gradients, _ = tf.clip_by_global_norm(gradients, self.cfg.gradient_clip_norm)
             self.optimizer.apply_gradients(zip(gradients, self.detector.model.trainable_variables))
             
             for key, value in loss_dict.items():
@@ -282,14 +280,14 @@ class SingleGPUTrainer(object):
                         tf.summary.scalar("val/" + key, result, self.global_step)
                         info.extend([key, "=", result])
                     ap = self.ap_metric.result()
-                    tf.summary.scalar("val/ap", ap, step=self.global_step)
+                    tf.summary.scalar("val/ap", ap[0], step=self.global_step)
                     info.extend(["ap =", ap])
                     self.ap_metric.reset_states()
                 val_end = time.time()
                 info.extend(["(%.2fs)" % (val_end - val_start)])
                 tf.print(*info)
 
-                if ap > max_ap:
+                if tf.logical_or(ap > max_ap, ap - max_ap > -1.):
                     self.manager.save(self.global_step)
                     tf.print(_time_to_string(), "Saving detector to %s." % self.manager.latest_checkpoint)
                     max_ap = ap

@@ -220,7 +220,7 @@ class DIoULoss(tf.keras.losses.Loss):
         ex1 = tf.math.minimum(tx1, px1)
         ey2 = tf.math.maximum(ty2, py2)
         ex2 = tf.math.maximum(tx2, px2)
-        
+
         diagonal_dist = (ey2 - ey1) ** 2. + (ex2 - ex1) ** 2.
 
         # center points:
@@ -230,7 +230,7 @@ class DIoULoss(tf.keras.losses.Loss):
         p_ctr_x = (px1 + px2) * 0.5
         center_point_dist = (t_ctr_y - p_ctr_y) ** 2. + (t_ctr_x - p_ctr_x) ** 2.
 
-        loss = 1. - iou + center_point_dist / diagonal_dist
+        loss = 1. - iou + center_point_dist / (diagonal_dist + 1e-3)
 
         weighted_loss = loss * self.weight
         

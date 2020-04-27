@@ -153,7 +153,7 @@ class Objects365Dataset(Dataset):
         if self.training:
             image, boxes, labels = self.augment(image, boxes, labels)
         else:
-            image = tf.image.resize(image, self.input_size)
+            image, boxes, labels = self.test_process(image, boxes, labels)
         
         image = tf.cast(image, tf.uint8)
         input_size = tf.convert_to_tensor(
@@ -185,39 +185,64 @@ def main():
     count = 0
     input_size = 800
     dataset_dir = "/home/bail/Data/data1/Dataset/Objects365/train"
-    
+    min_level = 3
+    max_level = 7
+    num_scales = 3
+    anchor_scale = 4
+    strides = [2 ** l for l in range(min_level, max_level + 1)]
+    num_anchors = 9
+    anchor = dict(aspect_ratios=[[1., 0.5, 2.]] * (max_level - min_level + 1),
+                    scales=[
+                        [2 ** (i / num_scales) * s * anchor_scale 
+                        for i in range(num_scales)] for s in strides
+                    ],
+                    num_anchors=9)
+    num_proposals_per_level = [(input_size // s) * (input_size // s) * num_anchors for s in strides]
     assigner = {
-        "assigner": "fcos_assigner",
-        "object_sizes_of_interest": [[0, 64],
-                                     [64, 128],
-                                     [128, 256],
-                                     [256, 512],
-                                     [512, 1e10]],
-        "sampling_radius": 0.,
-        "min_level": 3,
-        "max_level": 7,
+        "assigner": "atss_assigner",
+        "topk": 2,
+        "num_proposals_per_level": num_proposals_per_level,
+        # "object_sizes_of_interest": [[0, 64],
+        #                              [64, 128],
+        #                              [128, 256],
+        #                              [256, 512],
+        #                              [512, 1e10]],
+        # "sampling_radius": 0.,
+        # "min_level": 3,
+        # "max_level": 7,
     }
     augmentation = [
-        dict(ssd_crop=dict(input_size=[input_size, input_size],
-                            patch_area_range=(0.3, 1.),
-                            aspect_ratio_range=(0.5, 2.0),
-                            min_overlaps=(0.1, 0.3, 0.5, 0.7, 0.9),
-                            max_attempts=100,
-                            probability=.5)),
+        # dict(ssd_crop=dict(input_size=[input_size, input_size],
+        #                     patch_area_range=(0.3, 1.),
+        #                     aspect_ratio_range=(0.5, 2.0),
+        #                     min_overlaps=(0.1, 0.3, 0.5, 0.7, 0.9),
+        #                     max_attempts=100,
+        #                     probability=.5)),
         # dict(data_anchor_sampling=dict(input_size=[input_size, input_size],
         #                                anchor_scales=(16, 32, 64, 128, 256, 512),
         #                                overlap_threshold=0.7,
         #                                max_attempts=50,
         #                                probability=.5)),
+        dict(retina_crop=dict(min_scale=0.5, max_scale=2.0, probability=0.5)),
         dict(flip_left_to_right=dict(probability=0.5)),
         dict(random_distort_color=dict(probability=1.))
     ]
-    dataset = Objects365Dataset(dataset_dir, True, 1, (input_size, input_size), augmentation=augmentation, assigner=assigner).dataset()
-    for images, image_info in dataset.take(100):
+    dataset = Objects365Dataset(dataset_dir, 
+                                training=True, 
+                                min_level=min_level,
+                                max_level=max_level,
+                                batch_size=1, 
+                                input_size=(input_size, input_size), 
+                                augmentation=augmentation,
+                                assigner=assigner,
+                                anchor=anchor).dataset()
+    for images, image_info in dataset.take(20):
         count += 1
         labels = image_info["gt_labels"]
         boxes = image_info["gt_boxes"]
-        print(count, labels)
+        target_labels = image_info["target_labels"]
+        targe_boxes = image_info["target_boxes"]
+        # print(count, labels)
         # plt.figure()
         for j in range(1):
             count += 1
@@ -226,14 +251,25 @@ def main():
             img = img.numpy()
             img = img.astype(np.uint8)
 
-            box = boxes[j].numpy()
+            pos = target_labels[j] > 0
+            print("num_pos", np.sum(pos.numpy()))
+            t_boxes = tf.boolean_mask(targe_boxes[j], pos).numpy()
+            t_labels = tf.boolean_mask(target_labels[j], pos).numpy()
+            # box = boxes[j].numpy()
             # print('\n', count)
-            for l in box:
+            boxes = boxes[j].numpy()
+            for l in boxes:
                 pt1 = (int(l[1]), int(l[0]))
                 pt2 = (int(l[3]), int(l[2]))
-                # print(pt1, pt2)
+
+                img = cv2.rectangle(img, pt1=pt1, pt2=pt2, thickness=1, color=(0, 0, 255))
+
+            for l in t_boxes:
+                pt1 = (int(l[1]), int(l[0]))
+                pt2 = (int(l[3]), int(l[2]))
 
                 img = cv2.rectangle(img, pt1=pt1, pt2=pt2, thickness=1, color=(0, 255, 0))
+            
 
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
             cv2.imshow("image", img)

@@ -3,6 +3,7 @@ from .preprocess import should_apply_op
 from .preprocess import Rotate
 from .preprocess import SSDCrop
 from .preprocess import SFDetCrop
+from .preprocess import RetinaCrop
 from .preprocess import FlipLeftToRight
 # from .preprocess import AutoAugmentation
 from .preprocess import DataAnchorSampling
@@ -19,6 +20,7 @@ AUGS = {
 CROPS = {
     "ssd_crop": SSDCrop,
     "sfdet_crop": SFDetCrop,
+    "retina_crop": RetinaCrop,
     "data_anchor_sampling": DataAnchorSampling,
 }
 

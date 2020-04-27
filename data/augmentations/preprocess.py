@@ -377,6 +377,97 @@ class SFDetCrop(object):
             return self.call(image, boxes, labels)
 
 
+class RetinaCrop(object):
+    def __init__(self, input_size, min_scale=0.1, max_scale=2.0, training=True, **kwargs):
+        self.min_scale = min_scale
+        self.max_scale = max_scale
+        self.input_size = (input_size, input_size) if isinstance(input_size, int) else input_size
+
+        self.training = training
+        # Parameters to control rescaling and shifting during proprocessing.
+        # Image scale difines scale from original image to scaled image.
+        self._image_scale = tf.constant(1.0)
+        # The integer height and width of scaled image.
+        self._scaled_height = None
+        self._scaled_width = None
+        # The x and y translation offset to crop scaled image to the input size.
+        self._crop_offset_y = tf.constant(0)
+        self._crop_offset_x = tf.constant(0)
+
+    def set_random_scale_factors(self, image):
+        """Set the parameters for multiscale training."""
+        # Select a random scale factor.
+        random_scale_factor = tf.random.uniform([], self.min_scale, self.max_scale)
+        scaled_size_h = random_scale_factor * self.input_size[0]
+        scaled_size_w = random_scale_factor * self.input_size[1]
+
+        # Recompute the accurate scale_factor using rounded scaled image size.
+        height = tf.shape(image)[0]
+        width = tf.shape(image)[1]
+        image_scale_h = scaled_size_h / tf.cast(height, tf.float32)
+        image_scale_w = scaled_size_w / tf.cast(width, tf.float32)
+        image_scale = tf.minimum(image_scale_w, image_scale_h)
+
+        # Select non-zero random offset (x, y) if scaled image is larger than input_size.
+        scaled_height = tf.cast(tf.cast(height, tf.float32) * image_scale, tf.int32)
+        scaled_width = tf.cast(tf.cast(width, tf.float32) * image_scale, tf.int32)
+        offset_h = tf.cast(scaled_height - self.input_size[0], tf.float32)
+        offset_w = tf.cast(scaled_width - self.input_size[1], tf.float32)
+        offset_h = tf.maximum(0.0, offset_h) * tf.random.uniform([], 0, 1)
+        offset_w = tf.maximum(0.0, offset_w) * tf.random.uniform([], 0, 1)
+        offset_h = tf.cast(offset_h, tf.int32)
+        offset_w = tf.cast(offset_w, tf.int32)
+
+        self._image_scale = image_scale
+        self._scaled_height = scaled_height
+        self._scaled_width = scaled_width
+        self._crop_offset_y = offset_h
+        self._crop_offset_x = offset_w
+
+    def set_fixed_scale_factors(self, image):
+        # Compute the scale_factor using rounded scaled image size
+        height = tf.shape(image)[0]
+        width = tf.shape(image)[1]
+
+        image_scale_h = self.input_size[0] / tf.cast(height, tf.float32)
+        image_scale_w = self.input_size[1] / tf.cast(width, tf.float32)
+        image_scale = tf.minimum(image_scale_h, image_scale_w)
+
+        scaled_h = tf.cast(tf.cast(height, tf.float32) * image_scale, tf.int32)
+        scaled_w = tf.cast(tf.cast(width, tf.float32) * image_scale, tf.int32)
+
+        self._image_scale = image_scale
+        self._scaled_height = scaled_h
+        self._scaled_width = scaled_w
+
+    def resize_and_crop_image(self, image, boxes, labels):
+        scaled_image = tf.image.resize(image, [self._scaled_height, self._scaled_width])
+        scaled_image = scaled_image[self._crop_offset_y: self._crop_offset_y + self.input_size[0],
+                                    self._crop_offset_x: self._crop_offset_x + self.input_size[1]]
+        output_image = tf.image.pad_to_bounding_box(scaled_image, 0, 0, self.input_size[0], self.input_size[1])
+
+        patch = tf.cast(tf.stack([self._crop_offset_y, self._crop_offset_x, 
+                                  self._crop_offset_y + self.input_size[0],
+                                  self._crop_offset_x + self.input_size[1]]), tf.float32)
+        patch /= tf.cast(tf.stack([self._scaled_height, 
+                                   self._scaled_width, 
+                                   self._scaled_height, 
+                                   self._scaled_width]), tf.float32)
+        
+        clipped_boxes, clipped_labels = clip_boxes_based_center(boxes, labels, patch)
+
+        return output_image, clipped_boxes, clipped_labels
+    
+    def __call__(self, image, boxes, labels):
+        with tf.name_scope("retina_crop"):
+            if self.training:
+                self.set_random_scale_factors(image)
+            else:
+                self.set_fixed_scale_factors(image)
+        
+            return self.resize_and_crop_image(image, boxes, labels) 
+
+
 @tf.function
 def _rotate(image, angle, replace, order=0):
     def _rot(img, agl, cval):

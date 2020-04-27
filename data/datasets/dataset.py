@@ -3,6 +3,7 @@ import tensorflow as tf
 from data.augmentations import Compose 
 from core.anchors import AnchorGenerator
 from core.assigners import build_assigner
+from data.augmentations import RetinaCrop
 
 class Dataset(object):
     def __init__(self, 
@@ -36,6 +37,7 @@ class Dataset(object):
         self.assigner = build_assigner(**self.assigner_args)
 
         self.augment = Compose(input_size, augmentation) if augmentation is not None else None
+        self.test_process = RetinaCrop(input_size, training=False)
 
     def is_valid_jpg(self, jpg_file):
         with open(jpg_file, 'rb') as f:
@@ -116,9 +118,10 @@ class Dataset(object):
             feat_h = int(math.ceil(self.input_size[0] // strides))
             feat_w = int(math.ceil(self.input_size[1] // strides))
             anchors = self.anchor_generator(feature_map_size=[feat_h, feat_w], 
-                                            scales=self.anchor_args.scales[i], 
-                                            aspect_ratios=self.anchor_args.aspect_ratios[i], 
+                                            scales=self.anchor_args["scales"][i], 
+                                            aspect_ratios=self.anchor_args["aspect_ratios"][i], 
                                             strides=strides)
+           
             total_anchors.append(anchors)
         
         total_anchors = tf.concat(total_anchors, 0)
