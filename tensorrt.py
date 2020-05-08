@@ -102,7 +102,7 @@ def main():
     parser.add_argument("--output_dir", default="./trt_model/efficientdet/1", type=str)
     args = parser.parse_args()
 
-    assert args.mode in ["FP16" or "FP32"], "Now, only support float16 and float32"
+    assert args.mode in ["FP16", "FP32"], "Now, only support float16 and float32"
     saved_model_dir = args.saved_model_dir
     convert_to_tensorrt(args.mode, saved_model_dir, args.output_dir)
 
