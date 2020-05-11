@@ -110,6 +110,7 @@ class EfficientDet(tf.keras.Model):
 
     @tf.function(experimental_relax_shapes=True)
     def call(self, inputs):
+        inputs = tf.image.convert_image_dtype(inputs, tf.float32)
         total_anchors = []
         input_size = tf.shape(inputs)[1:3]
 
@@ -134,7 +135,7 @@ class EfficientDet(tf.keras.Model):
 def save_model(model_name="efficientdet-d0", image_size=None):
     efficientdet = EfficientDet(model_name, image_size)
     input_size = efficientdet.input_size
-    efficientdet(tf.random.uniform([1] + list(input_size) + [3], 0, 1), training=False)
+    efficientdet(tf.cast(tf.random.uniform([1] + list(input_size) + [3], 0, 256), tf.uint8), training=False)
     # test(efficientdet)
     tf.saved_model.save(efficientdet, "./saved_model/{}/1/".format(model_name))
 

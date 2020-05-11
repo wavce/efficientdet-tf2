@@ -80,9 +80,9 @@ def inference(saved_model_dir, video_path, input_size):
     infer = loaded.signatures[tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
     infer = loaded.signatures["serving_default"]
 
-    img = cv2.imread("/home/bail/Workspace/efficientdet/img.png")
+    img = cv2.imread("./data/images/img.png")
     height, width = img.shape[0:2]
-    img_data = tf.image.convert_image_dtype(preprocess(img, input_size)[np.newaxis, ...], tf.float32)
+    img_data = tf.convert_to_tensor(preprocess(img, input_size)[np.newaxis, ...], tf.uint8)
     outputs = infer(img_data)
     num = outputs["valid_detections"].numpy()[0]
     boxes = outputs["nmsed_boxes"].numpy()[0][:num]
@@ -109,7 +109,8 @@ def inference(saved_model_dir, video_path, input_size):
         else:
             raise ValueError("No image!")
         frame_size = frame.shape[:2]
-        image_data = tf.image.convert_image_dtype(preprocess(frame.copy(), input_size)[np.newaxis, ...], tf.float32)
+        image_data = tf.convert_to_tensor(preprocess(frame, input_size)[np.newaxis, ...], dtype=tf.unint8)
+     
         prev_time = time.time()
         # print(infer(image_data))
         outputs = infer(image_data)
@@ -144,7 +145,7 @@ def inference(saved_model_dir, video_path, input_size):
 
 def main():
     parser = argparse.ArgumentParser(description="Demo args")
-    parser.add_argument("--saved_model_dir", default="./saved_model/efficientdet/1", type=str)
+    parser.add_argument("--saved_model_dir", default="./saved_model/efficientdet-d0/1", type=str)
     parser.add_argument("--video_path", default="../2.mp4", type=str)
     parser.add_argument("--input_size", default=None, type=int)
 
